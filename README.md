@@ -1,35 +1,30 @@
 # Chambly WebApp 
 
-Chambly es una plataforma digital e híbrida diseñada para el contexto de El Salvador, orientada a la gestión y contratación de servicios técnicos y oficios independientes. El sistema actúa como un puente seguro entre profesionales que desean construir su identidad laboral y clientes que buscan soluciones rápidas, confiables y verificadas.
+Chambly es una plataforma digital pensada para la realidad de El Salvador. Funciona como un puente seguro en línea que conecta a trabajadores de oficios independientes (como fontaneros, electricistas o mecánicos) con clientes que necesitan soluciones rápidas, confiables y con total seguridad. 
+
+El objetivo es ayudar a que los profesionales muestren la calidad de su trabajo y que los clientes puedan contratarlos sin desconfianza.
 
 ## Propósito del Proyecto
 
-Este proyecto surge como parte de la asignatura **Ingeniería de Software I** en la **Universidad Gerardo Barrios (UGB)**. El desarrollo se basa en la metodología *Design Sprint* y busca resolver los principales puntos de tensión del sector informal, tales como la falta de referencias, la invisibilidad laboral y la dificultad para validar la identidad de los trabajadores.
+Este sistema nace como proyecto principal en la materia de **Ingeniería de Software I** de la **Universidad Gerardo Barrios (UGB)**. Utilizando el método *Design Sprint*, buscamos solucionar problemas reales de nuestro entorno, como el miedo de los clientes al contratar a un desconocido, la falta de recomendaciones confiables y la dificultad que tienen los trabajadores para darse a conocer formalmente.
 
-## Stack Tecnológico
+## Herramientas y Tecnologías
 
-El desarrollo del ecosistema se divide en las siguientes tecnologías principales:
+Para construir la aplicación, seleccionamos herramientas modernas que aseguran un diseño rápido y un sistema seguro:
 
-* **Frontend:** Vue.js y React estructurados con **Vite (v6)**, estilizados con **Tailwind CSS** y componentes de **Radix UI**.
-* **Animaciones & Interactividad:** Motion.
-* **Backend:** PHP nativo y Laravel Framework.
-* **Base de Datos:** MySQL administrado a través de **phpMyAdmin**.
-* **Control de Versiones & Gestión:** Git, GitHub y Trello para el tablero Kanban.
+* **Para el diseño y pantallas (Frontend):** Vue.js y React combinados con Vite (v6), usando Tailwind CSS y Radix UI para que la interfaz sea limpia, atractiva y se adapte a cualquier celular o computadora.
+* **Animaciones:** Motion para lograr que el uso de la aplicación se sienta fluido y moderno.
+* **Para el cerebro y lógica de la app (Backend):** PHP y el Framework Laravel.
+* **Almacenamiento de información (Base de Datos):** MySQL, administrado de forma visual mediante phpMyAdmin.
+* **Organización del Equipo:** Git y GitHub para controlar los cambios en el código, y Trello para el reparto de tareas en el grupo.
 
-## Planificación del Proyecto (Roadmap de Sprints)
+## Plan de Trabajo (Nuestros Sprints)
 
-El desarrollo de Chambly está estructurado en 4 ciclos incrementales (Sprints):
+El desarrollo de Chambly está dividido en 4 etapas o ciclos de trabajo:
 
-1. **DSprint 1 - Gestión de Usuarios:** Implementación del módulo de autenticación (Registro y Login diferenciado por Clientes y Profesionales), validación de identidad y configuración base de la Base de Datos.
-2. **DSprint 2 - Reportería y Gestión de Perfiles:** Funcionalidades para la edición/visualización de perfiles y desarrollo de un Dashboard analítico para administradores con estadísticas de usuarios. Permite dejar reseñas y mostrar trabajos.
-3. **DSprint 3 - Integración de APIs y Notificaciones:** Conexiones con servicios externos para pasarelas de pago, geolocalización, y sistema de alertas internas sobre solicitudes y actualizaciones.
-4. **DSprint 4 - Dashboard Analítico y Despliegue Pre-Feria:** Pruebas funcionales exhaustivas, optimización de métricas clave y preparación del entorno de producción para el lanzamiento de la aplicación.
+1. **Ciclo 1 - Control de Usuarios:** Creación de las pantallas de registro y de inicio de sesión (separando los accesos para Clientes y para Profesionales), configurando los primeros filtros para validar la identidad y preparando la base de datos.
+2. **Ciclo 2 - Gestión de Perfiles y Reseñas:** Desarrollo de los perfiles donde los técnicos podrán mostrar fotos de sus trabajos anteriores y donde los clientes podrán dejarles comentarios y calificaciones. También incluye un panel de control para que el administrador vea las estadísticas de uso.
+3. **Ciclo 3 - Conexiones y Alertas (APIs):** Integración de herramientas externas para el manejo seguro de pagos, mapas o geolocalización, y un sistema interno de notificaciones para avisar sobre solicitudes de trabajo.
+4. **Ciclo 4 - Pruebas Finales y Lanzamiento:** Pruebas a fondo para asegurar que nada falle, optimización de la velocidad de la app y preparación final de la plataforma para dejarla lista de cara a la Feria de Proyectos.
 
 
-## Estructura General del Repositorio
-
-text
-├── src/            # Código fuente (Vue / React / Laravel)
-├── public/         # Archivos públicos y recursos estáticos
-├── database/       # Scripts de migración y estructura MySQL
-└── README.md       # Presentación e instrucciones del proyecto
