@@ -8,15 +8,6 @@ El objetivo es ayudar a que los profesionales muestren la calidad de su trabajo 
 
 Este sistema nace como proyecto principal en la materia de **Ingeniería de Software I** de la **Universidad Gerardo Barrios (UGB)**. Utilizando el método *Design Sprint*, buscamos solucionar problemas reales de nuestro entorno, como el miedo de los clientes al contratar a un desconocido, la falta de recomendaciones confiables y la dificultad que tienen los trabajadores para darse a conocer formalmente.
 
-## Herramientas y Tecnologías
-
-Para construir la aplicación, seleccionamos herramientas modernas que aseguran un diseño rápido y un sistema seguro:
-
-* **Para el diseño y pantallas (Frontend):** Vue.js y React combinados con Vite (v6), usando Tailwind CSS y Radix UI para que la interfaz sea limpia, atractiva y se adapte a cualquier celular o computadora.
-* **Animaciones:** Motion para lograr que el uso de la aplicación se sienta fluido y moderno.
-* **Para el cerebro y lógica de la app (Backend):** PHP y el Framework Laravel.
-* **Almacenamiento de información (Base de Datos):** MySQL, administrado de forma visual mediante phpMyAdmin.
-* **Organización del Equipo:** Git y GitHub para controlar los cambios en el código, y Trello para el reparto de tareas en el grupo.
 
 ## Plan de Trabajo (Nuestros Sprints)
 
