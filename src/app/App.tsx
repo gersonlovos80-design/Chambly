@@ -118,37 +118,42 @@ export default function App() {
     triggerToast(`Estás en el modo ${savedUserType === 'professional' ? 'Profesional' : 'Cliente'}`);
   };
 
-  const handleToggleMode = () => {
-    if (!userData) return;
+ const handleToggleMode = () => {
+  if (!userData) return;
 
-    if (userType === 'client') {
-      if (userData.is_professional) {
-        const newMode = 'professional';
-        setUserType(newMode);
-        localStorage.setItem('userType', newMode);
-        setCurrentScreen('professional-dashboard');
+  if (userType === 'client') {
+    // CASO 1: De Cliente a Profesional
+    if (userData.is_professional) {
+      const newMode = 'professional';
+      setUserType(newMode);
+      localStorage.setItem('userType', newMode);
+      setCurrentScreen('professional-dashboard');
 
-        // Registrar en el historial
-        const newRecord = {
-          date: new Date().toLocaleString('es-ES'),
-          from: 'Cliente',
-          to: 'Profesional'
-        };
-        const updatedHistory = [newRecord, ...roleHistory];
-        setRoleHistory(updatedHistory);
-        localStorage.setItem('roleHistory', JSON.stringify(updatedHistory));
+      const newRecord = {
+        date: new Date().toLocaleString('es-ES'),
+        from: 'Cliente',
+        to: 'Profesional'
+      };
+      const updatedHistory = [newRecord, ...roleHistory];
+      setRoleHistory(updatedHistory);
+      localStorage.setItem('roleHistory', JSON.stringify(updatedHistory));
 
-        triggerToast('Cambiaste al modo Profesional');
-      } else {
-        setCurrentScreen('professional-register');
-      }
+      triggerToast('Cambiaste al modo Profesional');
     } else {
+      // Si no tiene perfil profesional, lo redirige al Registro
+      setCurrentScreen('register');
+      triggerToast('Completa tu registro para activar tu perfil profesional');
+    }
+
+  } else {
+    // CASO 2: De Profesional a Cliente
+    // Si tu app requiere validar perfil de cliente antes de cambiar:
+    if (userData.is_client !== false) { 
       const newMode = 'client';
       setUserType(newMode);
       localStorage.setItem('userType', newMode);
       setCurrentScreen('client-dashboard');
 
-      // Registrar en el historial
       const newRecord = {
         date: new Date().toLocaleString('es-ES'),
         from: 'Profesional',
@@ -159,8 +164,13 @@ export default function App() {
       localStorage.setItem('roleHistory', JSON.stringify(updatedHistory));
 
       triggerToast('Cambiaste al modo Cliente');
+    } else {
+      // Si tampoco tuviera perfil de cliente registrado, lo redirige al Registro
+      setCurrentScreen('register');
+      triggerToast('Completa tu registro para activar tu perfil de cliente');
     }
-  };
+  }
+};
 
 
   // Chat state
