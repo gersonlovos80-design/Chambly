@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
-
+import { loginUsuario } from "../../services/api";
 interface LoginProps {
-  onLogin: (userType: 'client' | 'professional', userData: any) => void;
+  onLogin: (userType: 'client' | 'professional' | 'admin', userData: any) => void;
   onSwitchToRegister: () => void;
 }
 
@@ -28,7 +28,7 @@ export function Login({ onLogin, onSwitchToRegister }: LoginProps) {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Validate email before submitting
@@ -57,8 +57,38 @@ export function Login({ onLogin, onSwitchToRegister }: LoginProps) {
       photo: '' // User can upload their own photo later
     };
 
-    onLogin(userType, userData);
-  };
+  try {
+    const resultado = await loginUsuario(email, password, localStorage.getItem('userType') || '');
+
+   if (resultado.ok) {
+  // Guardar usuario en localStorage (para mantener sesión)
+  localStorage.setItem("chambly_usuario", JSON.stringify(resultado.usuario));
+  localStorage.setItem("user", JSON.stringify(resultado.usuario));
+
+  // Detectar el tipo correctamente (cliente, profesional o admin)
+  let tipo: "client" | "professional" | "admin" = "client";
+
+  if (resultado.usuario.rol === "admin") {
+    tipo = "admin";
+  } else if (resultado.modo === "professional") {
+    tipo = "professional";
+  } else {
+    tipo = "client";
+  }
+
+  // Avisar al App.tsx que el login fue exitoso
+  onLogin(tipo, resultado.usuario);
+  if (resultado.aviso_decision) {
+    alert(resultado.aviso_decision);
+  }
+} else {
+  alert(resultado.mensaje); // "Contraseña incorrecta", "Cuenta en revisión", etc.
+}
+  } catch (error) {
+    console.error(error);
+    alert("Error de conexión con el servidor");
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#FAF8F5] p-4">

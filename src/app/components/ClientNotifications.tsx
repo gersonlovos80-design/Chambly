@@ -1,11 +1,17 @@
-import { ArrowLeft, Check, Clock, X, MessageCircle } from 'lucide-react';
-import { ImageWithFallback } from './figma/ImageWithFallback';
+import { ArrowLeft, Check, Clock, X, MessageCircle, Bell } from 'lucide-react';
+import { useState } from 'react';
+import { RatingModal } from './RatingModal';
 
 interface ClientNotificationsProps {
   onBack: () => void;
-  onOpenChat?: (professionalName: string) => void;
+  userType: 'client' | 'professional';
+  onOpenChat?: (requestId: number) => void;
+  onOpenRequests?: () => void;
   onViewProfessional?: (professional: any) => void;
   sentRequests?: any[];
+  notifications?: any[];
+  onMarkRead?: (notificationId: number) => void;
+  onReviewRequest?: (requestId: number, rating: number, comment: string) => Promise<void>;
 }
 
 const getCategoryColor = (category: string): string => {
@@ -109,7 +115,9 @@ const mockNotifications = [
   }
 ];
 
-export function ClientNotifications({ onBack, onOpenChat, onViewProfessional, sentRequests = [] }: ClientNotificationsProps) {
+export function ClientNotifications({ onBack, userType, onOpenChat, onOpenRequests, sentRequests = [], notifications = [], onMarkRead, onReviewRequest }: ClientNotificationsProps) {
+  const [reviewRequest, setReviewRequest] = useState<any>(null);
+  const [reviewError, setReviewError] = useState('');
   return (
     <div className="min-h-screen bg-[#FAF8F5]">
       {/* Header */}
@@ -129,7 +137,7 @@ export function ClientNotifications({ onBack, onOpenChat, onViewProfessional, se
         <h1 className="text-3xl mb-6 text-[#1D1D1B]">Notificaciones</h1>
 
         {/* Sent Requests Section */}
-        {sentRequests.length > 0 && (
+        {userType === 'client' && sentRequests.length > 0 && (
           <>
             <h2 className="text-xl font-medium text-[#1D1D1B] mb-4">Solicitudes Enviadas</h2>
             <div className="space-y-4 mb-8">
@@ -152,93 +160,175 @@ export function ClientNotifications({ onBack, onOpenChat, onViewProfessional, se
                         <span className="text-sm text-gray-600">
                           {request.paymentMethod === 'efectivo' ? 'Efectivo' : 'Tarjeta'}
                         </span>
+                        <span className={`rounded-full px-2 py-1 text-xs font-medium ${
+                          request.status === 'aceptada' ? 'bg-green-100 text-green-700' :
+                          request.status === 'rechazada' ? 'bg-red-100 text-red-700' :
+                          request.status === 'completada' ? 'bg-blue-100 text-blue-700' :
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {request.status === 'aceptada' ? 'Aceptada' :
+                            request.status === 'rechazada' ? 'Rechazada' :
+                            request.status === 'completada' ? 'Completada' :
+                            request.status === 'en_proceso' ? 'En proceso' : 'Pendiente'}
+                        </span>
                       </div>
                     </div>
                     <div className="p-2 bg-blue-100 rounded-full h-fit">
                       <Clock size={20} className="text-blue-600" />
                     </div>
                   </div>
+                  {userType === 'client' && request.status === 'completada' && !request.reviewId && (
+                    <button
+                      onClick={() => {
+                        setReviewError('');
+                        setReviewRequest(request);
+                      }}
+                      className="mt-4 rounded-lg bg-[#FFC900] px-4 py-2 font-medium text-[#1D1D1B] hover:bg-[#e6b500]"
+                    >
+                      Dejar reseña
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
           </>
         )}
 
-        <h2 className="text-xl font-medium text-[#1D1D1B] mb-4">Respuestas de Profesionales</h2>
+        <h2 className="text-xl font-medium text-[#1D1D1B] mb-4">Notificaciones</h2>
         <div className="space-y-4">
-          {mockNotifications.map((notification) => (
+          {notifications.map((notification) => (
             <div
               key={notification.id}
               className={`bg-white rounded-xl shadow-sm p-6 ${
-                notification.status === 'nueva' ? 'border-2 border-indigo-200' : ''
+                Number(notification.leida) === 0 ? 'border-2 border-indigo-200' : ''
               }`}
             >
               <div className="flex gap-4">
-                {/* Professional Photo */}
-                <ImageWithFallback
-                  src={notification.professionalPhoto}
-                  alt={notification.professionalName}
-                  className="w-16 h-16 rounded-full object-cover flex-shrink-0"
-                />
-
                 {/* Notification Content */}
                 <div className="flex-1">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
                       <p className="text-lg">
-                        <span className="font-medium">{notification.professionalName}</span>{' '}
-                        <span className="text-[#1D1D1B]">{notification.message}</span>
+                        <span className="font-medium">{notification.titulo}</span>
                       </p>
+                      <p className="mt-1 text-sm text-gray-700">{notification.mensaje}</p>
                       <div className="flex items-center gap-3 mt-2">
-                        <span className="text-sm text-gray-500">{notification.time}</span>
-                        <span className={`px-3 py-1 ${getCategoryColor(notification.jobType)} font-medium rounded-full text-sm`}>
-                          {notification.jobType}
-                        </span>
+                        <span className="text-sm text-gray-500">{notification.fecha_creacion}</span>
                       </div>
                     </div>
 
                     {/* Status Icon */}
                     <div>
-                      {notification.type === 'accepted' && (
+                      {notification.tipo === 'aceptacion' && (
                         <div className="p-2 bg-green-100 rounded-full">
                           <Check size={20} className="text-green-600" />
                         </div>
                       )}
-                      {notification.type === 'pending' && (
+                      {notification.titulo === 'Servicio completado' && (
+                        <div className="mt-3">
+                          <button
+                            onClick={() => onOpenChat && onOpenChat(Number(notification.referencia_id))}
+                            className="flex items-center gap-2 rounded-lg border border-[#685AA1] px-4 py-2 text-[#685AA1] transition-colors hover:bg-[#D3CFED]"
+                          >
+                            <MessageCircle size={18} />
+                            Abrir servicio y dejar reseña
+                          </button>
+                        </div>
+                      )}
+                      {userType === 'professional' && notification.tipo === 'solicitud' && (
+                        <div className="mt-3">
+                          <button
+                            onClick={onOpenRequests}
+                            className="rounded-lg bg-[#685AA1] px-4 py-2 text-white transition-colors hover:bg-[#51437F]"
+                          >
+                            Ver solicitudes de servicio
+                          </button>
+                        </div>
+                      )}
+                      {notification.tipo === 'solicitud' && (
                         <div className="p-2 bg-yellow-100 rounded-full">
                           <Clock size={20} className="text-yellow-600" />
                         </div>
                       )}
-                      {notification.type === 'declined' && (
+                      {notification.tipo === 'rechazo' && (
                         <div className="p-2 bg-red-100 rounded-full">
                           <X size={20} className="text-red-600" />
+                        </div>
+                      )}
+                      {!['aceptacion', 'solicitud', 'rechazo'].includes(notification.tipo) && (
+                        <div className="p-2 bg-indigo-100 rounded-full">
+                          <Bell size={20} className="text-indigo-600" />
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {notification.type === 'accepted' && (
+                  {notification.tipo === 'aceptacion' && (
                     <div className="mt-3 flex gap-2">
                       <button
-                        onClick={() => onViewProfessional && onViewProfessional(notification.professionalData)}
-                        className="flex-1 px-4 py-2 bg-[#FFC900] text-[#1D1D1B] font-medium rounded-lg hover:bg-[#e6b500] transition-colors"
-                      >
-                        Ver Detalles
-                      </button>
-                      <button
-                        onClick={() => onOpenChat && onOpenChat(notification.professionalName)}
+                        onClick={() => onOpenChat && onOpenChat(Number(notification.referencia_id))}
                         className="flex items-center gap-2 px-4 py-2 border border-[#685AA1] text-[#685AA1] rounded-lg hover:bg-[#D3CFED] transition-colors"
                       >
                         <MessageCircle size={18} />
-                        Chatear
+                        Abrir chat interno
                       </button>
                     </div>
+                  )}
+                  {(
+                    ['mensaje', 'presupuesto', 'presupuesto_respuesta'].includes(notification.tipo) ||
+                    (
+                      notification.tipo === 'otro' &&
+                      ['Nuevo mensaje', 'Nuevo presupuesto de servicio', 'Respuesta al presupuesto'].includes(notification.titulo)
+                    )
+                  ) && (
+                    <div className="mt-3">
+                      <button
+                        onClick={() => onOpenChat && onOpenChat(Number(notification.referencia_id))}
+                        className="flex items-center gap-2 rounded-lg border border-[#685AA1] px-4 py-2 text-[#685AA1] transition-colors hover:bg-[#D3CFED]"
+                      >
+                        <MessageCircle size={18} />
+                        Abrir chat del servicio
+                      </button>
+                    </div>
+                  )}
+                  {Number(notification.leida) === 0 && (
+                    <button
+                      onClick={() => onMarkRead?.(Number(notification.id))}
+                      className="mt-3 text-sm text-[#685AA1] underline"
+                    >
+                      Marcar como leída
+                    </button>
                   )}
                 </div>
               </div>
             </div>
           ))}
+          {notifications.length === 0 && (
+            <p className="rounded-xl bg-white p-6 text-gray-500">No tienes notificaciones nuevas.</p>
+          )}
         </div>
+        {reviewRequest && (
+          <RatingModal
+            isOpen={true}
+            onClose={() => setReviewRequest(null)}
+            onSubmit={async (rating, comment) => {
+              if (!onReviewRequest) return;
+              try {
+                await onReviewRequest(Number(reviewRequest.solicitudId), rating, comment);
+                setReviewRequest(null);
+              } catch (error) {
+                setReviewError(error instanceof Error ? error.message : 'No se pudo enviar la reseña');
+              }
+            }}
+            targetName={reviewRequest.professionalName}
+            userType="client"
+          />
+        )}
+        {reviewError && (
+          <p role="alert" className="fixed bottom-5 left-1/2 z-[60] -translate-x-1/2 rounded-lg bg-red-600 px-4 py-3 text-white">
+            {reviewError}
+          </p>
+        )}
       </div>
     </div>
   );

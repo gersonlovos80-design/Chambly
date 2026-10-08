@@ -1,6 +1,4 @@
 import { ArrowLeft, MessageCircle, CheckCircle, Calendar } from 'lucide-react';
-import { useState } from 'react';
-import { RatingModal } from './RatingModal';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 
 interface ActiveJob {
@@ -17,7 +15,7 @@ interface ActiveJob {
 interface ActiveJobsProps {
   onBack: () => void;
   activeJobs: ActiveJob[];
-  onMarkCompleted: (jobId: string, rating: number) => void;
+  onMarkCompleted: (jobId: string) => void;
   onOpenChat: (chatId: string) => void;
 }
 
@@ -36,21 +34,6 @@ const getCategoryColor = (category: string): string => {
 };
 
 export function ActiveJobs({ onBack, activeJobs, onMarkCompleted, onOpenChat }: ActiveJobsProps) {
-  const [showRatingModal, setShowRatingModal] = useState(false);
-  const [selectedJob, setSelectedJob] = useState<ActiveJob | null>(null);
-
-  const handleCompleteClick = (job: ActiveJob) => {
-    setSelectedJob(job);
-    setShowRatingModal(true);
-  };
-
-  const handleRatingSubmit = (rating: number) => {
-    if (selectedJob) {
-      onMarkCompleted(selectedJob.id, rating);
-    }
-    setShowRatingModal(false);
-    setSelectedJob(null);
-  };
 
   const activeJobsList = activeJobs.filter(job => !job.isCompleted);
   const completedJobsList = activeJobs.filter(job => job.isCompleted);
@@ -125,7 +108,7 @@ export function ActiveJobs({ onBack, activeJobs, onMarkCompleted, onOpenChat }: 
                       Chatear
                     </button>
                     <button
-                      onClick={() => handleCompleteClick(job)}
+                      onClick={() => onMarkCompleted(job.id)}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[#FFC900] text-[#1D1D1B] font-medium rounded-lg hover:bg-[#e6b500] transition-colors"
                     >
                       <CheckCircle size={18} />
@@ -193,19 +176,6 @@ export function ActiveJobs({ onBack, activeJobs, onMarkCompleted, onOpenChat }: 
         )}
       </div>
 
-      {/* Rating Modal */}
-      {showRatingModal && selectedJob && (
-        <RatingModal
-          isOpen={showRatingModal}
-          onClose={() => {
-            setShowRatingModal(false);
-            setSelectedJob(null);
-          }}
-          onSubmit={handleRatingSubmit}
-          targetName={selectedJob.clientName}
-          userType="professional"
-        />
-      )}
     </div>
   );
 }

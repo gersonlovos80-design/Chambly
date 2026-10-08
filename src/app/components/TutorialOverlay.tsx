@@ -198,13 +198,13 @@ export function TutorialOverlay({ isOpen, onClose, userType }: TutorialOverlayPr
 
   return (
     <>
-      {/* Dark Overlay */}
-      <div className="fixed inset-0 bg-black bg-opacity-70 z-[200]" />
+      {/* Softer backdrop keeps the guided screen visible while preserving contrast. */}
+      <div className="fixed inset-0 bg-[#1D1D1B]/40 z-[200]" />
 
       {/* Highlight Area */}
       {step.highlightArea && (
         <div
-          className="fixed z-[201] rounded-lg ring-4 ring-[#FFC900] ring-opacity-50 pointer-events-none animate-pulse-slow"
+          className="fixed z-[201] rounded-lg bg-white/20 ring-4 ring-[#FFC900] ring-opacity-80 pointer-events-none animate-pulse-slow"
           style={{
             top: step.highlightArea.top,
             left: step.highlightArea.left,
@@ -217,8 +217,8 @@ export function TutorialOverlay({ isOpen, onClose, userType }: TutorialOverlayPr
       )}
 
       {/* Tooltip */}
-      <div className={`fixed z-[202] ${getTooltipPosition()} max-w-sm`}>
-        <div className={`bg-white rounded-2xl shadow-2xl p-6 relative ${getArrowClass()}`}>
+      <div className={`fixed z-[202] ${getTooltipPosition()} w-[calc(100%-2rem)] max-w-sm`}>
+        <div className={`bg-white border border-[#D3CFED] rounded-2xl shadow-[0_20px_60px_rgba(29,29,27,0.28)] p-6 relative ${getArrowClass()}`}>
           {/* Close Button */}
           <button
             onClick={handleSkip}

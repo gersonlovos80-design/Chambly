@@ -4,7 +4,7 @@ import { useState } from 'react';
 interface RatingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (rating: number) => void;
+  onSubmit: (rating: number, comment: string) => void;
   targetName: string;
   userType: 'client' | 'professional';
 }
@@ -13,17 +13,24 @@ export function RatingModal({ isOpen, onClose, onSubmit, targetName, userType }:
   const [rating, setRating] = useState(0);
   const [hoveredRating, setHoveredRating] = useState(0);
   const [comment, setComment] = useState('');
+  const [validationError, setValidationError] = useState('');
 
   if (!isOpen) return null;
 
   const handleSubmit = () => {
-    if (rating > 0) {
-      onSubmit(rating);
-      onClose();
-      // Reset for next use
-      setRating(0);
-      setComment('');
+    if (rating === 0) {
+      setValidationError('Selecciona de 1 a 5 estrellas.');
+      return;
     }
+    if (comment.trim().length < 20) {
+      setValidationError('Escribe un comentario de al menos 20 caracteres.');
+      return;
+    }
+    onSubmit(rating, comment.trim());
+    onClose();
+    setRating(0);
+    setComment('');
+    setValidationError('');
   };
 
   return (
@@ -98,19 +105,21 @@ export function RatingModal({ isOpen, onClose, onSubmit, targetName, userType }:
         {/* Comment Section */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-[#1D1D1B] mb-2">
-            Comentario (Opcional)
+            Comentario (mínimo 20 caracteres)
           </label>
           <textarea
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="Comparte tu experiencia para ayudar a otros usuarios..."
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1] min-h-[100px] resize-none"
-            maxLength={300}
+            minLength={20}
+            maxLength={1000}
           />
           <p className="text-sm text-gray-500 mt-1">
-            {comment.length}/300 caracteres
+            {comment.length}/1000 caracteres
           </p>
         </div>
+        {validationError && <p role="alert" className="mb-4 text-sm text-red-700">{validationError}</p>}
 
         {/* Actions */}
         <div className="flex gap-4">
@@ -122,7 +131,6 @@ export function RatingModal({ isOpen, onClose, onSubmit, targetName, userType }:
           </button>
           <button
             onClick={handleSubmit}
-            disabled={rating === 0}
             className="flex-1 px-6 py-3 bg-[#FFC900] text-[#1D1D1B] font-medium rounded-lg hover:bg-[#e6b500] transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
             Enviar Calificación

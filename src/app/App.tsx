@@ -20,16 +20,76 @@ import { PaymentModal } from './components/PaymentModal';
 import { PaymentSuccessAnimation } from './components/PaymentSuccessAnimation';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { PaymentMethods } from './components/PaymentMethods';
+import { AdminDashboard } from './components/AdminDashboard';
+import {
+  actualizarPerfilRol,
+  crearSolicitud,
+  crearResena,
+  completarSolicitud,
+  crearPresupuesto,
+  enviarMensaje,
+  logoutUsuario,
+  marcarNotificacionLeida,
+  obtenerConversaciones,
+  obtenerNotificaciones,
+  obtenerResenas,
+  obtenerPerfilesRol,
+  obtenerSolicitudes,
+  responderPresupuesto,
+  responderSolicitud
+} from '../services/api';
+import type { ServiceRequestPayload } from './components/RequestServiceModal';
+import { ProfessionalProfileRegistration } from './components/ProfessionalProfileRegistration';
+import { ClientProfileRegistration } from './components/ClientProfileRegistration';
 
-export type UserMode = 'client' | 'professional';
-export type Screen = 'login' | 'register' | 'client-dashboard' | 'professional-dashboard' | 'profile' | 'notifications' | 'help' | 'browse-professionals' | 'view-professional' | 'view-client' | 'request-details' | 'reviews' | 'client-reviews' | 'active-jobs' | 'payment-history' | 'payment-methods' | 'professional-register' ;
+export type UserMode = 'client' | 'professional' | 'admin';
+export type Screen = 'login' | 'register' | 'client-dashboard' | 'professional-dashboard' | 'profile' | 'notifications' | 'help' | 'browse-professionals' | 'view-professional' | 'view-client' | 'request-details' | 'reviews' | 'client-reviews' | 'active-jobs' | 'payment-history' | 'payment-methods' | 'professional-register' | 'client-register' | 'admin-dashboard';
+
+function mapConversations(conversations: any[], notifications: any[]) {
+  const unreadRequestIds = new Set(
+    notifications
+      .filter((notification: any) =>
+        Number(notification.leida) === 0 &&
+        (
+          ['mensaje', 'presupuesto', 'presupuesto_respuesta'].includes(notification.tipo) ||
+          (
+            notification.tipo === 'otro' &&
+            ['Nuevo mensaje', 'Nuevo presupuesto de servicio', 'Respuesta al presupuesto'].includes(notification.titulo)
+          )
+        )
+      )
+      .map((notification: any) => Number(notification.referencia_id))
+  );
+  return conversations.map((conversation: any) => ({
+    ...conversation,
+    id: String(conversation.id),
+    messages: conversation.messages || [],
+    unread: unreadRequestIds.has(Number(conversation.solicitud_id))
+  }));
+}
+
+function userDataForMode(account: any, mode: Exclude<UserMode, 'admin'>) {
+  const profile = account.profiles?.[mode];
+  if (!profile) return account;
+
+  return {
+    ...account,
+    ...profile,
+    accountId: account.accountId || account.id,
+    profiles: account.profiles,
+    roleHistory: account.roleHistory || [],
+    is_client: Boolean(account.profiles.client),
+    is_professional: Boolean(account.profiles.professional)
+  };
+}
 
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('login');
   const [userData, setUserData] = useState<any>(null);
-  const [userType, setUserType] = useState<'client' | 'professional' | null>(null);
+  const [userType, setUserType] = useState<'client' | 'professional' | 'admin' | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedProfessional, setSelectedProfessional] = useState<any>(null);
+  const [professionalReviews, setProfessionalReviews] = useState<any>(null);
   const [selectedClient, setSelectedClient] = useState<any>(null);
   const [lastActivityData, setLastActivityData] = useState<any>(null);
   
@@ -81,96 +141,124 @@ export default function App() {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     const storedUserType = localStorage.getItem('userType');
+    let cancelled = false;
+
 
     if (storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        setUserData(parsedUser);
+      const restoreSession = async () => {
+        try {
+          const savedUser = JSON.parse(storedUser);
+          const isAdmin = savedUser.rol === 'admin';
+          const account = isAdmin ? savedUser : (await obtenerPerfilesRol()).usuario;
+          const professionalIsApproved =
+            account.profiles?.professional?.estado === 'activo' &&
+            account.profiles.professional.activo;
+          const hasClientProfile = Boolean(account.profiles?.client);
 
-        const mode = storedUserType === 'professional' ? 'professional' : 'client';
-        setUserType(mode);
-        setCurrentScreen(mode === 'professional' ? 'professional-dashboard' : 'client-dashboard');
-        
-        // Notificación Toast al restaurar sesión
-        triggerToast(`Estás en el modo ${mode === 'professional' ? 'Profesional' : 'Cliente'}`);
-      } catch (e) {
-        console.error('Error al restaurar sesion:', e);
-        localStorage.clear();
-      }
+          const mode: UserMode = isAdmin
+            ? 'admin'
+            : storedUserType === 'professional' && professionalIsApproved
+              ? 'professional'
+              : hasClientProfile
+                ? 'client'
+                : professionalIsApproved
+                  ? 'professional'
+                  : 'client';
+
+          if (!isAdmin && !hasClientProfile && !professionalIsApproved) {
+            throw new Error('La cuenta no tiene un perfil aprobado para iniciar sesión');
+          }
+
+          const activeUser = mode === 'admin' ? account : userDataForMode(account, mode);
+          if (cancelled) return;
+          setUserData(activeUser);
+          setRoleHistory(account.roleHistory || []);
+          setUserType(mode);
+          localStorage.setItem('userType', mode);
+          localStorage.setItem('user', JSON.stringify(activeUser));
+          setCurrentScreen(mode === 'admin'
+            ? 'admin-dashboard'
+            : mode === 'professional'
+              ? 'professional-dashboard'
+              : 'client-dashboard');
+          if (mode !== 'admin') {
+            triggerToast(`Estás en el modo ${mode === 'professional' ? 'Profesional' : 'Cliente'}`);
+          }
+        } catch (error) {
+          console.error('No se pudo restaurar la sesión:', error);
+          if (cancelled) return;
+          localStorage.removeItem('user');
+          localStorage.removeItem('userType');
+          localStorage.removeItem('chambly_usuario');
+          setUserData(null);
+          setUserType(null);
+          setCurrentScreen('login');
+        }
+      };
+      void restoreSession();
     }
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleLoginSuccess = (user: any) => {
-    setUserData(user);
-    localStorage.setItem('user', JSON.stringify(user));
-    
-    const savedUserType = user.is_professional ? 'professional' : 'client';
-    setUserType(savedUserType);
-    localStorage.setItem('userType', savedUserType);
-    
-    if (savedUserType === 'professional') {
-      setCurrentScreen('professional-dashboard');
-    } else {
-      setCurrentScreen('client-dashboard');
-    }
+  setUserData(user);
+  localStorage.setItem('user', JSON.stringify(user));
 
-    // Notificación Toast al iniciar sesión
-    triggerToast(`Estás en el modo ${savedUserType === 'professional' ? 'Profesional' : 'Cliente'}`);
-  };
+  // Detectar el tipo de usuario
+  let savedUserType: 'client' | 'professional' | 'admin' = 'client';
 
- const handleToggleMode = () => {
-  if (!userData) return;
-
-  if (userType === 'client') {
-    // CASO 1: De Cliente a Profesional
-    if (userData.is_professional) {
-      const newMode = 'professional';
-      setUserType(newMode);
-      localStorage.setItem('userType', newMode);
-      setCurrentScreen('professional-dashboard');
-
-      const newRecord = {
-        date: new Date().toLocaleString('es-ES'),
-        from: 'Cliente',
-        to: 'Profesional'
-      };
-      const updatedHistory = [newRecord, ...roleHistory];
-      setRoleHistory(updatedHistory);
-      localStorage.setItem('roleHistory', JSON.stringify(updatedHistory));
-
-      triggerToast('Cambiaste al modo Profesional');
-    } else {
-      // Si no tiene perfil profesional, lo redirige al Registro
-      setCurrentScreen('register');
-      triggerToast('Completa tu registro para activar tu perfil profesional');
-    }
-
+  if (user.rol === 'admin') {
+    savedUserType = 'admin';
+  } else if (user.rol === 'profesional' || user.isProfessional) {
+    savedUserType = 'professional';
   } else {
-    // CASO 2: De Profesional a Cliente
-    // Si tu app requiere validar perfil de cliente antes de cambiar:
-    if (userData.is_client !== false) { 
-      const newMode = 'client';
-      setUserType(newMode);
-      localStorage.setItem('userType', newMode);
-      setCurrentScreen('client-dashboard');
+    savedUserType = 'client';
+  }
 
-      const newRecord = {
-        date: new Date().toLocaleString('es-ES'),
-        from: 'Profesional',
-        to: 'Cliente'
-      };
-      const updatedHistory = [newRecord, ...roleHistory];
-      setRoleHistory(updatedHistory);
-      localStorage.setItem('roleHistory', JSON.stringify(updatedHistory));
+  setUserType(savedUserType);
+  localStorage.setItem('userType', savedUserType);
 
-      triggerToast('Cambiaste al modo Cliente');
-    } else {
-      // Si tampoco tuviera perfil de cliente registrado, lo redirige al Registro
-      setCurrentScreen('register');
-      triggerToast('Completa tu registro para activar tu perfil de cliente');
-    }
+  // Redirigir según el tipo
+  if (savedUserType === 'admin') {
+    setCurrentScreen('admin-dashboard');
+  } else if (savedUserType === 'professional') {
+    setCurrentScreen('professional-dashboard');
+  } else {
+    setCurrentScreen('client-dashboard');
   }
 };
+
+  const handleToggleMode = async () => {
+    if (!userData || (userType !== 'client' && userType !== 'professional')) return;
+
+    const newMode = userType === 'client' ? 'professional' : 'client';
+    const professionalProfile = userData.profiles?.professional;
+    if (newMode === 'professional' && !professionalProfile) {
+      setCurrentScreen('professional-register');
+      return;
+    }
+    if (newMode === 'client' && !userData.profiles?.client) {
+      setCurrentScreen('client-register');
+      return;
+    }
+    try {
+      const result = await actualizarPerfilRol({ action: 'switch', mode: newMode });
+      const account = result.usuario;
+      const activeUser = userDataForMode(account, newMode);
+      setUserData(activeUser);
+      setUserType(newMode);
+      setRoleHistory(account.roleHistory || []);
+      localStorage.setItem('user', JSON.stringify(activeUser));
+      localStorage.setItem('userType', newMode);
+      setCurrentScreen(newMode === 'professional' ? 'professional-dashboard' : 'client-dashboard');
+      triggerToast(result.mensaje);
+    } catch (error) {
+      console.error('No se pudo cambiar el modo de la cuenta:', error);
+      triggerToast(error instanceof Error ? error.message : 'No se pudo cambiar el modo');
+    }
+  };
 
 
   // Chat state
@@ -183,6 +271,8 @@ export default function App() {
 
   // Client request tracking
   const [sentRequests, setSentRequests] = useState<any[]>([]);
+  const [serviceRequests, setServiceRequests] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
 
   // Payment state
   const [transactions, setTransactions] = useState<any[]>([
@@ -312,7 +402,7 @@ export default function App() {
   // Tutorial state
   const [showTutorial, setShowTutorial] = useState(false);
   const [hasSeenTutorial, setHasSeenTutorial] = useState(false);
-  const [chats, setChats] = useState<any[]>([
+  const demoChats = [
     // Demo chat 1 - Active with invoice (Card payment - unpaid)
     {
       id: 'demo-chat-1',
@@ -589,15 +679,125 @@ export default function App() {
         }
       ]
     }
-  ]);
+  ];
+  const [chats, setChats] = useState<any[]>([]);
 
-  const handleLogin = (type: 'client' | 'professional', data: any) => {
-    setUserData(data);
+  useEffect(() => {
+    if (!userData || (userType !== 'client' && userType !== 'professional')) return;
+    let cancelled = false;
+    const loadServiceData = async (reportLoadError: boolean) => {
+      const [requestState, conversationState, notificationState] = await Promise.allSettled([
+          obtenerSolicitudes(),
+          obtenerConversaciones(),
+          obtenerNotificaciones()
+      ]);
+      if (cancelled) return;
+
+      const loadErrors: string[] = [];
+      const requests = requestState.status === 'fulfilled'
+        ? requestState.value.solicitudes || []
+        : null;
+      const notificationItems = notificationState.status === 'fulfilled'
+        ? notificationState.value.notificaciones || []
+        : null;
+      const conversations = conversationState.status === 'fulfilled'
+        ? conversationState.value.conversaciones || []
+        : null;
+
+      if (requests) {
+        setServiceRequests(requests);
+        if (userType === 'client') {
+          setSentRequests(requests.map((request: any) => ({
+            id: String(request.id),
+            professionalId: String(request.profesional_id),
+            professionalName: `${request.profesional_nombre} ${request.profesional_apellido}`.trim(),
+            category: request.categoria || 'Servicio',
+            paymentMethod: String(request.metodo_pago || '').toLowerCase(),
+            date: request.fecha_solicitud,
+            time: request.fecha_solicitud,
+            status: request.estado,
+            municipio: request.municipio,
+            departamento: request.departamento,
+            solicitudId: Number(request.id),
+            reviewId: request.resena_id ? Number(request.resena_id) : null
+          })));
+        }
+      } else {
+        loadErrors.push(`solicitudes: ${String(requestState.reason)}`);
+      }
+
+      if (notificationItems) {
+        setNotifications(notificationItems);
+      } else {
+        loadErrors.push(`notificaciones: ${String(notificationState.reason)}`);
+      }
+
+      let mappedChats: any[] | null = null;
+      if (conversations) {
+        mappedChats = mapConversations(conversations, notificationItems || []);
+        setChats(previous => mappedChats!.map((chat: any) => ({
+          ...chat,
+          unread: notificationItems
+            ? chat.unread
+            : previous.find((item: any) => item.id === chat.id)?.unread || false
+        })));
+      } else {
+        loadErrors.push(`conversaciones: ${String(conversationState.reason)}`);
+      }
+
+      if (requests && userType === 'professional') {
+        const chatByRequest = new Map((mappedChats || []).map((chat: any) => [Number(chat.solicitud_id), chat]));
+        setActiveJobs(requests
+          .filter((request: any) => ['aceptada', 'en_proceso', 'completada'].includes(request.estado))
+          .map((request: any) => {
+            const chat: any = chatByRequest.get(Number(request.id));
+            return {
+              id: String(request.id),
+              chatId: chat?.id || '',
+              clientName: `${request.cliente_nombre || ''} ${request.cliente_apellido || ''}`.trim() || 'Cliente',
+              clientPhoto: request.foto_cliente || '',
+              jobType: request.categoria || 'Servicio',
+              scheduledDate: [request.fecha_servicio, request.hora_servicio].filter(Boolean).join(' · ') || 'Por coordinar',
+              description: request.descripcion,
+              isCompleted: request.estado === 'completada'
+            };
+          }));
+      } else if (requests) {
+        setActiveJobs([]);
+      }
+
+      if (reportLoadError && loadErrors.length > 0) {
+        console.error('No se pudieron cargar algunos datos del servicio:', loadErrors);
+        triggerToast(`No se pudieron cargar ${loadErrors.join('; ')}`);
+      }
+    };
+    void loadServiceData(true);
+    const refreshTimer = window.setInterval(() => { void loadServiceData(false); }, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshTimer);
+    };
+  }, [userData, userType]);
+
+  const handleLogin = (type: UserMode, data: any) => {
+    const activeUser = type === 'admin' ? data : userDataForMode(data, type);
+    setUserData(activeUser);
     setUserType(type);
-    setCurrentScreen(type === 'client' ? 'client-dashboard' : 'professional-dashboard');
+    if (Array.isArray(data.roleHistory)) {
+      setRoleHistory(data.roleHistory);
+    }
+    localStorage.setItem('user', JSON.stringify(activeUser));
+    localStorage.setItem('userType', type);
 
-    // Show tutorial if user hasn't seen it
-    if (!hasSeenTutorial) {
+    if (type === 'admin') {
+      setCurrentScreen('admin-dashboard');
+    } else if (type === 'professional') {
+      setCurrentScreen('professional-dashboard');
+    } else {
+      setCurrentScreen('client-dashboard');
+    }
+
+    if (type !== 'admin' && !hasSeenTutorial) {
       setTimeout(() => {
         setShowTutorial(true);
       }, 500);
@@ -624,10 +824,19 @@ export default function App() {
     setShowTutorial(true);
   };
 
-  const handleLogout = () => {
-    setUserData(null);
-    setUserType(null);
-    setCurrentScreen('login');
+  const handleLogout = async () => {
+    try {
+      await logoutUsuario();
+    } catch (error) {
+      console.error('Error al cerrar la sesión del servidor:', error);
+    } finally {
+      localStorage.removeItem('user');
+      localStorage.removeItem('userType');
+      localStorage.removeItem('chambly_usuario');
+      setUserData(null);
+      setUserType(null);
+      setCurrentScreen('login');
+    }
   };
 
   const handleNavigation = (section: string) => {
@@ -651,7 +860,16 @@ export default function App() {
     setCurrentScreen('view-client');
   };
 
-  const handleViewReviews = () => {
+  const handleViewReviews = async () => {
+    if (!selectedProfessional?.id) return;
+    try {
+      const result = await obtenerResenas(selectedProfessional.id);
+      setProfessionalReviews(result);
+    } catch (error) {
+      console.error('No se pudieron cargar las reseñas:', error);
+      triggerToast(error instanceof Error ? error.message : 'No se pudieron cargar las reseñas');
+      return;
+    }
     setCurrentScreen('reviews');
   };
 
@@ -659,93 +877,79 @@ export default function App() {
     setCurrentScreen('client-reviews');
   };
 
-  const handleSendRequest = (professionalId: string, professionalName: string, category: string, paymentMethod: 'efectivo' | 'tarjeta') => {
-    const newRequest = {
-      id: `request-${Date.now()}`,
-      professionalId: String(professionalId),
-      professionalName: professionalName,
-      category: category,
-      paymentMethod: paymentMethod,
-      date: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
-      time: 'Hace unos momentos',
-      status: 'enviada'
-    };
-
-    setSentRequests(prev => [newRequest, ...prev]);
+  const handleSendRequest = async (payload: ServiceRequestPayload) => {
+    const result = await crearSolicitud(payload);
+    const requestResult = await obtenerSolicitudes();
+    setServiceRequests(requestResult.solicitudes || []);
+    setSentRequests((requestResult.solicitudes || []).map((request: any) => ({
+      id: String(request.id),
+      professionalId: String(request.profesional_id),
+      professionalName: `${request.profesional_nombre} ${request.profesional_apellido}`.trim(),
+      category: request.categoria || 'Servicio',
+      paymentMethod: String(request.metodo_pago || '').toLowerCase(),
+      date: request.fecha_solicitud,
+      time: request.fecha_solicitud,
+      status: request.estado,
+      municipio: request.municipio,
+      departamento: request.departamento,
+      solicitudId: Number(request.id),
+      reviewId: request.resena_id ? Number(request.resena_id) : null
+    })));
+    triggerToast(result.mensaje);
   };
 
-  const handleAcceptRequest = (requestId: number, clientName: string, jobType: string, clientPhoto: string, scheduledDate: string, description: string, requestedPaymentMethod?: 'efectivo' | 'tarjeta') => {
-    // Mark request as accepted
-    setAcceptedRequestIds(prev => [...prev, requestId]);
-
-    const chatId = `chat-${Date.now()}`;
-
-    // Create a new chat when request is accepted
-    const newChat = {
-      id: chatId,
-      otherPersonName: clientName,
-      otherPersonPhoto: clientPhoto,
-      lastMessage: 'Solicitud aceptada. ¡Ahora pueden conversar!',
-      lastMessageTime: 'Ahora',
-      unread: true,
-      isActive: true,
-      jobType: jobType,
-      clientRated: false,
-      professionalRated: false,
-      requestedPaymentMethod: requestedPaymentMethod,
-      messages: [
-        {
-          id: '1',
-          senderId: 'system',
-          text: '¡Solicitud aceptada! Ahora pueden coordinar los detalles del trabajo.',
-          timestamp: 'Ahora',
-          isMine: false,
-          type: 'text' as const
-        }
-      ]
-    };
-
-    setChats(prev => [newChat, ...prev]);
-
-    // Create active job
-    const newActiveJob = {
-      id: `job-${Date.now()}`,
-      chatId: chatId,
-      clientName: clientName,
-      clientPhoto: clientPhoto,
-      jobType: jobType,
-      scheduledDate: scheduledDate,
-      description: description,
-      isCompleted: false
-    };
-
-    setActiveJobs(prev => [newActiveJob, ...prev]);
-    alert('Solicitud aceptada. Ahora puedes chatear con el cliente y gestionar el trabajo desde "Trabajos Activos".');
-  };
-
-  const handleRejectRequest = (requestId: number) => {
-    setRejectedRequestIds(prev => [...prev, requestId]);
-  };
-
-  const handleMarkJobCompleted = (jobId: string, rating: number) => {
-    // Find the job to set up payment
-    const job = activeJobs.find(j => j.id === jobId);
-    if (job) {
-      // Set pending payment data
-      setPendingPayment({
-        jobId: jobId,
-        clientName: job.clientName,
-        serviceName: job.jobType,
-        amount: 0 // Will be entered in payment modal
-      });
-
-      // Store the rating temporarily
-      setActiveJobs(prev => prev.map(j =>
-        j.id === jobId ? { ...j, pendingRating: rating } : j
+  const handleMarkNotificationRead = async (notificationId: number) => {
+    try {
+      await marcarNotificacionLeida(notificationId);
+      setNotifications(previous => previous.map(notification =>
+        Number(notification.id) === notificationId ? { ...notification, leida: 1 } : notification
       ));
+    } catch (error) {
+      console.error('No se pudo marcar la notificación como leída:', error);
+      triggerToast(error instanceof Error ? error.message : 'No se pudo actualizar la notificación');
+    }
+  };
 
-      // Show payment modal
-      setShowPaymentModal(true);
+  const handleAcceptRequest = async (requestId: number) => {
+    try {
+      const result = await responderSolicitud(requestId, 'aceptada');
+      const [requestResult, conversationResult, notificationResult] = await Promise.all([
+        obtenerSolicitudes(), obtenerConversaciones(), obtenerNotificaciones()
+      ]);
+      setServiceRequests(requestResult.solicitudes || []);
+      setNotifications(notificationResult.notificaciones || []);
+      setChats(mapConversations(conversationResult.conversaciones || [], notificationResult.notificaciones || []));
+      triggerToast(result.mensaje);
+    } catch (error) {
+      console.error('No se pudo aceptar la solicitud:', error);
+      triggerToast(error instanceof Error ? error.message : 'No se pudo aceptar la solicitud');
+    }
+  };
+
+  const handleRejectRequest = async (requestId: number) => {
+    try {
+      const result = await responderSolicitud(requestId, 'rechazada');
+      const requestResult = await obtenerSolicitudes();
+      setServiceRequests(requestResult.solicitudes || []);
+      triggerToast(result.mensaje);
+    } catch (error) {
+      console.error('No se pudo rechazar la solicitud:', error);
+      triggerToast(error instanceof Error ? error.message : 'No se pudo rechazar la solicitud');
+    }
+  };
+
+  const handleMarkJobCompleted = async (jobId: string) => {
+    try {
+      const result = await completarSolicitud(Number(jobId));
+      const requestResult = await obtenerSolicitudes();
+      setServiceRequests(requestResult.solicitudes || []);
+      setActiveJobs(previous => previous.map(job =>
+        job.id === jobId ? { ...job, isCompleted: true } : job
+      ));
+      triggerToast(result.mensaje);
+    } catch (error) {
+      console.error('No se pudo completar el servicio:', error);
+      triggerToast(error instanceof Error ? error.message : 'No se pudo completar el servicio');
     }
   };
 
@@ -861,270 +1065,202 @@ export default function App() {
     }
   };
 
-  const handleChatSelect = (chatId: string) => {
+  const handleChatSelect = async (chatId: string) => {
+    const chat = chats.find(item => item.id === chatId);
     setSelectedChatId(chatId);
     setShowChatList(false);
     setShowChatWindow(true);
-
-    // Mark chat as read
     setChats(prev => prev.map(chat =>
       chat.id === chatId ? { ...chat, unread: false } : chat
     ));
-  };
-
-  const handleMarkFinished = (rating: number) => {
-    if (selectedChatId) {
-      // Update chat status
-      setChats(prev => prev.map(chat =>
-        chat.id === selectedChatId ? {
-          ...chat,
-          isActive: false,
-          professionalRated: true,
-          professionalRating: rating
-        } : chat
-      ));
-
-      // Mark the corresponding job as completed
-      setActiveJobs(prev => prev.map(job =>
-        job.chatId === selectedChatId ? { ...job, isCompleted: true } : job
-      ));
-
-      // Close chat window
-      setShowChatWindow(false);
-      setSelectedChatId(null);
-
-      alert(`Trabajo marcado como finalizado. Calificaste al cliente con ${rating} estrellas.`);
+    if (currentScreen === 'notifications') {
+      setCurrentScreen(userType === 'professional' ? 'professional-dashboard' : 'client-dashboard');
     }
-  };
-
-  const handleRate = (chatId: string, rating: number) => {
-    setChats(prev => prev.map(chat =>
-      chat.id === chatId ? {
-        ...chat,
-        clientRated: true,
-        clientRating: rating
-      } : chat
-    ));
-    alert(`Has calificado el servicio con ${rating} estrellas. ¡Gracias por tu opinión!`);
-  };
-
-  const handleSendMessage = (chatId: string, message: string) => {
-    // Add user's message
-    const newUserMessage = {
-      id: `msg-${Date.now()}`,
-      senderId: 'me',
-      text: message,
-      timestamp: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-      isMine: true,
-      type: 'text' as const
-    };
-
-    setChats(prev => prev.map(chat => {
-      if (chat.id === chatId) {
-        return {
-          ...chat,
-          messages: [...chat.messages, newUserMessage],
-          lastMessage: message,
-          lastMessageTime: 'Ahora'
-        };
-      }
-      return chat;
-    }));
-
-    // Auto-reply with "Gracias por contactarme!" after a short delay
-    setTimeout(() => {
-      const autoReply = {
-        id: `msg-${Date.now()}-reply`,
-        senderId: 'other',
-        text: '¡Gracias por contactarme!',
-        timestamp: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-        isMine: false,
-        type: 'text' as const
-      };
-
-      setChats(prev => prev.map(chat => {
-        if (chat.id === chatId) {
-          return {
-            ...chat,
-            messages: [...chat.messages, autoReply],
-            lastMessage: '¡Gracias por contactarme!',
-            lastMessageTime: 'Ahora',
-            unread: true
-          };
-        }
-        return chat;
-      }));
-    }, 1000);
-  };
-
-  const handleSendInvoice = (chatId: string, items: any[], total: number, expirationDate: string, paymentMethod: 'efectivo' | 'tarjeta') => {
-    const invoiceId = `invoice-${Date.now()}`;
-    const invoiceMessage = {
-      id: `msg-${Date.now()}`,
-      senderId: 'me',
-      timestamp: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-      isMine: true,
-      type: 'invoice' as const,
-      invoiceData: {
-        items,
-        total,
-        isPaid: false,
-        invoiceId,
-        expirationDate,
-        paymentMethod
-      }
-    };
-
-    // Find the chat to get client info
-    const chat = chats.find(c => c.id === chatId);
     if (!chat) return;
 
-    // Create transaction in payment history
-    const newTransaction = {
-      id: `trans-${Date.now()}`,
-      serviceId: chatId,
-      clientId: chatId,
-      clientName: chat.otherPersonName,
-      clientPhoto: chat.otherPersonPhoto,
-      professionalId: userData?.email || '',
-      serviceName: chat.jobType,
-      amount: total,
-      paymentMethod: paymentMethod,
-      paymentStatus: 'pendiente',
-      date: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
-      description: `Factura #${invoiceId.slice(-6)}`,
-      expirationDate: expirationDate,
-      invoiceId: invoiceId
-    };
+    const unreadChatNotifications = notifications.filter(notification =>
+      Number(notification.leida) === 0 &&
+      Number(notification.referencia_id) === Number(chat.solicitud_id) &&
+      (
+        ['mensaje', 'presupuesto', 'presupuesto_respuesta'].includes(notification.tipo) ||
+        (
+          notification.tipo === 'otro' &&
+          ['Nuevo mensaje', 'Nuevo presupuesto de servicio', 'Respuesta al presupuesto'].includes(notification.titulo)
+        )
+      )
+    );
+    if (unreadChatNotifications.length === 0) return;
 
-    setTransactions(prev => [newTransaction, ...prev]);
-
-    setChats(prev => prev.map(chat => {
-      if (chat.id === chatId) {
-        return {
-          ...chat,
-          messages: [...chat.messages, invoiceMessage],
-          lastMessage: `Factura enviada: $${total.toFixed(2)}`,
-          lastMessageTime: 'Ahora'
-        };
-      }
-      return chat;
-    }));
-
-    alert('Factura enviada al cliente exitosamente. Se agregó al historial de pagos como pendiente.');
-  };
-
-  const handlePayInvoice = (chatId: string, invoiceId: string, cardId: string) => {
-    // Mark invoice as paid
-    setChats(prev => prev.map(chat => {
-      if (chat.id === chatId) {
-        return {
-          ...chat,
-          messages: chat.messages.map((msg:any)=> {
-            if (msg.type === 'invoice' && msg.invoiceData?.invoiceId === invoiceId) {
-              return {
-                ...msg,
-                invoiceData: {
-                  ...msg.invoiceData,
-                  isPaid: true
-                }
-              };
-            }
-            return msg;
-          })
-        };
-      }
-      return chat;
-    }));
-
-    // Update transaction to completed
-    setTransactions(prev => prev.map(trans => {
-      if (trans.invoiceId === invoiceId) {
-        return {
-          ...trans,
-          paymentStatus: 'completado',
-          date: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
-        };
-      }
-      return trans;
-    }));
-
-    // Find the invoice to get the total
-    const chat = chats.find(c => c.id === chatId);
-    const invoice = chat?.messages.find((m:any) => m.type === 'invoice' && m.invoiceData?.invoiceId === invoiceId);
-
-    if (invoice?.invoiceData) {
-      alert(`Pago de $${invoice.invoiceData.total.toFixed(2)} procesado exitosamente con tarjeta`);
+    try {
+      await Promise.all(unreadChatNotifications.map(notification =>
+        marcarNotificacionLeida(Number(notification.id))
+      ));
+      const readIds = new Set(unreadChatNotifications.map(notification => Number(notification.id)));
+      setNotifications(previous => previous.map(notification =>
+        readIds.has(Number(notification.id)) ? { ...notification, leida: 1 } : notification
+      ));
+    } catch (error) {
+      console.error('No se pudieron marcar como leídas las notificaciones del chat:', error);
+      triggerToast(error instanceof Error ? error.message : 'No se pudieron actualizar las notificaciones');
     }
   };
 
-  const handleMarkInvoiceAsPaid = (chatId: string, invoiceId: string) => {
-    // Mark invoice as paid
-    setChats(prev => prev.map(chat => {
-      if (chat.id === chatId) {
-        return {
-          ...chat,
-          messages: chat.messages.map((msg:any) => {
-            if (msg.type === 'invoice' && msg.invoiceData?.invoiceId === invoiceId) {
-              return {
-                ...msg,
-                invoiceData: {
-                  ...msg.invoiceData,
-                  isPaid: true
-                }
-              };
-            }
-            return msg;
-          })
-        };
+  const handleMarkFinished = async () => {
+    const chat = chats.find(item => item.id === selectedChatId);
+    if (!chat) return;
+    try {
+      const result = await completarSolicitud(Number(chat.solicitud_id));
+      const [requestResult, conversationResult, notificationResult] = await Promise.all([
+        obtenerSolicitudes(), obtenerConversaciones(), obtenerNotificaciones()
+      ]);
+      setServiceRequests(requestResult.solicitudes || []);
+      setNotifications(notificationResult.notificaciones || []);
+      setChats(mapConversations(conversationResult.conversaciones || [], notificationResult.notificaciones || []));
+      setActiveJobs(previous => previous.map(job =>
+        job.chatId === selectedChatId ? { ...job, isCompleted: true } : job
+      ));
+      setShowChatWindow(false);
+      setSelectedChatId(null);
+      triggerToast(result.mensaje);
+    } catch (error) {
+      console.error('No se pudo marcar como completado el servicio:', error);
+      triggerToast(error instanceof Error ? error.message : 'No se pudo completar el servicio');
+    }
+  };
+
+  const handleRate = async (chatId: string, rating: number, comment: string) => {
+    const chat = chats.find(item => item.id === chatId);
+    if (!chat) return;
+    await handleSubmitReview(Number(chat.solicitud_id), rating, comment);
+    setChats(previous => previous.map(item =>
+      item.id === chatId ? { ...item, clientRated: true } : item
+    ));
+  };
+
+  const handleSubmitReview = async (requestId: number, rating: number, comment: string) => {
+    try {
+      const result = await crearResena({
+        solicitudId: requestId,
+        rating,
+        comment
+      });
+      const [requestResult, notificationResult] = await Promise.all([
+        obtenerSolicitudes(), obtenerNotificaciones()
+      ]);
+      setServiceRequests(requestResult.solicitudes || []);
+      setSentRequests((requestResult.solicitudes || []).map((request: any) => ({
+        id: String(request.id),
+        professionalId: String(request.profesional_id),
+        professionalName: `${request.profesional_nombre} ${request.profesional_apellido}`.trim(),
+        category: request.categoria || 'Servicio',
+        paymentMethod: String(request.metodo_pago || '').toLowerCase(),
+        date: request.fecha_solicitud,
+        time: request.fecha_solicitud,
+        status: request.estado,
+        municipio: request.municipio,
+        departamento: request.departamento,
+        solicitudId: Number(request.id),
+        reviewId: request.resena_id ? Number(request.resena_id) : null
+      })));
+      setNotifications(notificationResult.notificaciones || []);
+      triggerToast(result.mensaje);
+    } catch (error) {
+      console.error('No se pudo guardar la reseña:', error);
+      const message = error instanceof Error ? error.message : 'No se pudo enviar la reseña';
+      triggerToast(message);
+      throw new Error(message);
+    }
+  };
+
+  const handleSendMessage = async (chatId: string, message: string) => {
+    try {
+      const result = await enviarMensaje(Number(chatId), message);
+      const sentMessage = result.mensajeEnviado;
+      setChats(previous => previous.map(chat => chat.id === chatId ? {
+        ...chat,
+        messages: [...chat.messages, sentMessage],
+        lastMessage: sentMessage.text,
+        lastMessageTime: 'Ahora'
+      } : chat));
+      try {
+        const [conversationResult, notificationResult] = await Promise.all([
+          obtenerConversaciones(), obtenerNotificaciones()
+        ]);
+        setNotifications(notificationResult.notificaciones || []);
+        setChats(mapConversations(conversationResult.conversaciones || [], notificationResult.notificaciones || []));
+      } catch (refreshError) {
+        console.error('El mensaje se envió, pero no se pudo actualizar la conversación:', refreshError);
+        triggerToast('El mensaje se envió; no se pudo actualizar el chat. Vuelve a intentarlo en unos segundos.');
       }
-      return chat;
-    }));
+    } catch (error) {
+      console.error('No se pudo enviar el mensaje:', error);
+      triggerToast(error instanceof Error ? error.message : 'No se pudo enviar el mensaje');
+    }
+  };
 
-    // Update transaction to completed
-    setTransactions(prev => prev.map(trans => {
-      if (trans.invoiceId === invoiceId) {
-        return {
-          ...trans,
-          paymentStatus: 'completado',
-          date: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
-        };
+  const handleSendInvoice = async (
+    chatId: string,
+    items: any[],
+    deliveryMode: 'al_finalizar' | 'fecha',
+    scheduledDate: string
+  ) => {
+    const result = await crearPresupuesto(Number(chatId), items, deliveryMode, scheduledDate);
+    const sentMessage = result.mensajeEnviado;
+    setChats(previous => previous.map(chat => chat.id === chatId ? {
+      ...chat,
+      messages: [...chat.messages, sentMessage],
+      lastMessage: sentMessage.invoiceData?.status === 'programada'
+        ? 'Presupuesto programado'
+        : `Presupuesto enviado: $${Number(sentMessage.invoiceData?.total || 0).toFixed(2)}`,
+      lastMessageTime: 'Ahora'
+    } : chat));
+    triggerToast(result.mensaje);
+    try {
+      const [conversationResult, notificationResult] = await Promise.all([
+        obtenerConversaciones(), obtenerNotificaciones()
+      ]);
+      setNotifications(notificationResult.notificaciones || []);
+      setChats(mapConversations(conversationResult.conversaciones || [], notificationResult.notificaciones || []));
+    } catch (refreshError) {
+      console.error('El presupuesto se guardó como mensaje, pero no se pudo actualizar el chat:', refreshError);
+      triggerToast('El presupuesto se guardó en el chat; no se pudo actualizar la vista.');
+    }
+  };
+
+  const handleRespondQuote = async (
+    chatId: string,
+    quoteId: string,
+    decision: 'aceptada' | 'rechazada'
+  ) => {
+    try {
+      const result = await responderPresupuesto(Number(chatId), quoteId, decision);
+      setChats(previous => previous.map(chat => chat.id === chatId ? {
+        ...chat,
+        messages: chat.messages.map((message: any) =>
+          message.type === 'invoice' && message.invoiceData?.invoiceId === quoteId
+            ? { ...message, invoiceData: { ...message.invoiceData, status: decision } }
+            : message
+        ).concat(result.mensajeEnviado ? [result.mensajeEnviado] : [])
+      } : chat));
+      triggerToast(result.mensaje);
+      try {
+        const [conversationResult, notificationResult] = await Promise.all([
+          obtenerConversaciones(), obtenerNotificaciones()
+        ]);
+        setNotifications(notificationResult.notificaciones || []);
+        setChats(mapConversations(conversationResult.conversaciones || [], notificationResult.notificaciones || []));
+      } catch (refreshError) {
+        console.error('La respuesta del presupuesto se guardó, pero no se pudo actualizar el chat:', refreshError);
+        triggerToast('Tu respuesta se guardó; no se pudo actualizar el chat.');
       }
-      return trans;
-    }));
-
-    // Find chat to notify client
-    const chat = chats.find(c => c.id === chatId);
-    const invoice = chat?.messages.find((m:any) => m.type === 'invoice' && m.invoiceData?.invoiceId === invoiceId);
-
-    if (invoice?.invoiceData) {
-      alert(`Pago en efectivo de $${invoice.invoiceData.total.toFixed(2)} marcado como recibido. El cliente recibirá una notificación.`);
-
-      // Add notification message to client
-      const notificationMessage = {
-        id: `msg-${Date.now()}`,
-        senderId: 'system',
-        text: `✓ Tu pago en efectivo de $${invoice.invoiceData.total.toFixed(2)} ha sido recibido con éxito`,
-        timestamp: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
-        isMine: false,
-        type: 'text' as const
-      };
-
-      setChats(prev => prev.map(chat => {
-        if (chat.id === chatId) {
-          return {
-            ...chat,
-            messages: [...chat.messages, notificationMessage],
-            lastMessage: notificationMessage.text,
-            lastMessageTime: 'Ahora'
-          };
-        }
-        return chat;
-      }));
+    } catch (error) {
+      console.error('No se pudo responder el presupuesto:', error);
+      triggerToast(error instanceof Error ? error.message : 'No se pudo responder el presupuesto');
     }
   };
 
   const hasUnreadChats = chats.some(chat => chat.unread);
+  const unreadNotificationCount = notifications.filter(notification => Number(notification.leida) === 0).length;
   const selectedChat = chats.find(chat => chat.id === selectedChatId);
 
   // Show chat bubble: on dashboard OR on chat list, but NOT when in a specific chat window or login/register
@@ -1177,6 +1313,7 @@ export default function App() {
           onShowTutorial={handleShowTutorial}
           onToggleMode={handleToggleMode}
           roleHistory={roleHistory}
+          notificationCount={unreadNotificationCount}
         />
       )}
 
@@ -1190,11 +1327,17 @@ export default function App() {
           onViewClient={handleViewClient}
           onAcceptRequest={handleAcceptRequest}
           onRejectRequest={handleRejectRequest}
-          acceptedRequestIds={acceptedRequestIds}
-          rejectedRequestIds={rejectedRequestIds}
+          serviceRequests={serviceRequests}
           onShowTutorial={handleShowTutorial}
           onToggleMode={handleToggleMode}
           roleHistory={roleHistory}
+          notificationCount={unreadNotificationCount}
+        />
+      )}
+      {currentScreen === 'admin-dashboard' && (
+        <AdminDashboard
+          userData={userData}
+          onLogout={handleLogout}
         />
       )}
 
@@ -1214,19 +1357,21 @@ export default function App() {
         />
       )}
 
-      {currentScreen === 'notifications' && userData && userType === 'client' && (
+      {currentScreen === 'notifications' && userData && (userType === 'client' || userType === 'professional') && (
         <ClientNotifications
           onBack={handleBackToDashboard}
-          onOpenChat={(professionalName) => {
-            // Find the chat with this professional
-            const chat = chats.find(c => c.otherPersonName === professionalName && c.isActive);
+          userType={userType}
+          onOpenChat={(requestId) => {
+            const chat = chats.find(c => Number(c.solicitud_id) === requestId);
             if (chat) {
-              handleChatSelect(chat.id);
-              setCurrentScreen('client-dashboard');
+              void handleChatSelect(chat.id);
             }
           }}
-          onViewProfessional={handleViewProfessional}
+          onOpenRequests={() => setCurrentScreen('professional-dashboard')}
           sentRequests={sentRequests}
+          notifications={notifications}
+          onMarkRead={handleMarkNotificationRead}
+          onReviewRequest={handleSubmitReview}
         />
       )}
 
@@ -1256,7 +1401,6 @@ export default function App() {
           clientData={userType === 'client' ? userData : undefined}
           selectedCategory={selectedCategory}
           onViewReviews={handleViewReviews}
-          savedCards={userType === 'client' ? savedCards : []}
           sentRequests={userType === 'client' ? sentRequests : []}
           onSendRequest={userType === 'client' ? handleSendRequest : undefined}
         />
@@ -1296,38 +1440,10 @@ export default function App() {
         <ReviewsScreen
           onBack={() => setCurrentScreen('view-professional')}
           professionalName={`${selectedProfessional.name}${selectedProfessional.lastName ? ' ' + selectedProfessional.lastName : ''}`}
-          overallRating={selectedProfessional.rating || 4.5}
-          totalReviews={selectedProfessional.reviewCount || 24}
-          ratingDistribution={{
-            5: 18,
-            4: 4,
-            3: 1,
-            2: 1,
-            1: 0
-          }}
-          reviews={[
-            {
-              id: 1,
-              userName: 'Juan Pérez',
-              rating: 5,
-              comment: 'Excelente servicio, muy profesional y puntual. Dejó mi casa impecable. Totalmente recomendado.',
-              date: '20 de Abril, 2026'
-            },
-            {
-              id: 2,
-              userName: 'Ana García',
-              rating: 5,
-              comment: 'Muy contenta con el trabajo realizado. Atención al detalle y muy amable. Definitivamente volveré a contratar sus servicios.',
-              date: '15 de Abril, 2026'
-            },
-            {
-              id: 3,
-              userName: 'Roberto Silva',
-              rating: 4,
-              comment: 'Buen trabajo en general. Llegó a tiempo y fue muy profesional. Solo algunos detalles menores que mejorar.',
-              date: '10 de Abril, 2026'
-            }
-          ]}
+          overallRating={professionalReviews?.promedio || 0}
+          totalReviews={professionalReviews?.total || 0}
+          ratingDistribution={professionalReviews?.distribucion || { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 }}
+          reviews={professionalReviews?.resenas || []}
         />
       )}
 
@@ -1461,21 +1577,19 @@ export default function App() {
           chatData={selectedChat}
           currentUserId={userData?.email || ''}
           currentUserData={userData}
-          userType={userType || 'client'}
+          userType={(userType === 'admin' ? 'client' : userType) || 'client'}
           onMarkFinished={handleMarkFinished}
           onSendMessage={handleSendMessage}
           onRate={handleRate}
           onViewProfile={handleViewProfileFromChat}
           savedCards={savedCards}
           onSendInvoice={handleSendInvoice}
-          onPayInvoice={handlePayInvoice}
-          onMarkInvoiceAsPaid={handleMarkInvoiceAsPaid}
-          requestedPaymentMethod={selectedChat.requestedPaymentMethod}
+          onRespondQuote={handleRespondQuote}
         />
       )}
 
       {/* Tutorial Overlay */}
-      {showTutorial && userType && (
+      {showTutorial && (userType === 'client' || userType === 'professional') && (
         <TutorialOverlay
           isOpen={showTutorial}
           onClose={handleCloseTutorial}
@@ -1483,42 +1597,36 @@ export default function App() {
         />
       )}
       {currentScreen === 'professional-register' && userData && (
-        <div className="max-w-lg mx-auto bg-white p-8 rounded-xl shadow mt-6">
-          <h2 className="text-xl font-bold mb-4 text-gray-800">Registro de Perfil Profesional</h2>
-          <p className="text-sm text-gray-600 mb-6">Completa tus datos de trabajo para activar el perfil profesional.</p>
-          
-          <form 
-            onSubmit={(e) => {
-              e.preventDefault();
-              const updatedUser = { ...userData, is_professional: true };
-              setUserData(updatedUser);
-              localStorage.setItem('user', JSON.stringify(updatedUser));
-              setUserType('professional');
-              localStorage.setItem('userType', 'professional');
-              setCurrentScreen('professional-dashboard');
-            }}
-            className="space-y-4 text-gray-800"
-          >
-            <div>
-              <label className="block text-sm font-medium">Oficio / Especialidad</label>
-              <input type="text" required placeholder="Ej: Electricista, Plomero, Programador" className="w-full border p-2 rounded-md mt-1 border-gray-300" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium">Años de experiencia</label>
-              <input type="number" required placeholder="Ej: 3" className="w-full border p-2 rounded-md mt-1 border-gray-300" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium">Descripción de tus servicios</label>
-              <textarea rows={3} required placeholder="Describe los trabajos que realizas..." className="w-full border p-2 rounded-md mt-1 border-gray-300" />
-            </div>
-            <button
-              type="submit"
-              className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-md font-semibold transition"
-            >
-              Guardar y Activar Modo Profesional
-            </button>
-          </form>
-        </div>
+        <ProfessionalProfileRegistration
+          userData={userData}
+          onCancel={() => setCurrentScreen('client-dashboard')}
+          onSubmitted={(account) => {
+            const updatedAccount = { ...account, roleHistory: account.roleHistory || [] };
+            const activeUser = userDataForMode(updatedAccount, 'client');
+            setUserData(activeUser);
+            setRoleHistory(updatedAccount.roleHistory);
+            localStorage.setItem('user', JSON.stringify(activeUser));
+            setCurrentScreen('client-dashboard');
+            triggerToast('Tu perfil profesional fue enviado y estará disponible al ser aprobado');
+          }}
+        />
+      )}
+      {currentScreen === 'client-register' && userData && (
+        <ClientProfileRegistration
+          userData={userData}
+          onCancel={() => setCurrentScreen('professional-dashboard')}
+          onSubmitted={(account) => {
+            const updatedAccount = { ...account, roleHistory: account.roleHistory || [] };
+            const activeUser = userDataForMode(updatedAccount, 'client');
+            setUserData(activeUser);
+            setUserType('client');
+            setRoleHistory(updatedAccount.roleHistory);
+            localStorage.setItem('user', JSON.stringify(activeUser));
+            localStorage.setItem('userType', 'client');
+            setCurrentScreen('client-dashboard');
+            triggerToast('Tu perfil de cliente se vinculó a la cuenta existente');
+          }}
+        />
       )}
       {toastMessage && (
         <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-gray-900/90 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 transition-all duration-300 backdrop-blur-sm">
@@ -1528,4 +1636,5 @@ export default function App() {
       )}
     </div>
   );
+
 }

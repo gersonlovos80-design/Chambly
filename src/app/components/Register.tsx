@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { User, Mail, Lock, Briefcase, Phone, MapPin, Calendar, CreditCard, GraduationCap, Eye, EyeOff } from 'lucide-react';
-
+import { registrarUsuario } from "../../services/api";
 interface RegisterProps {
   onRegister: (userType: 'client' | 'professional', userData: any) => void;
   onSwitchToLogin: () => void;
@@ -31,13 +31,14 @@ export function Register({ onRegister, onSwitchToLogin }: RegisterProps) {
     phone: '',
     address: '',
     departamento: '',
+    municipio: '',
     password: '',
     confirmPassword: '',
     userType: 'client' as 'client' | 'professional',
     dui: '',
     // Professional-specific fields
     yearsExperience: '',
-    educationType: 'empirico' as 'empirico' | 'titulo',
+    educationType: 'Empírico' as 'Empírico' | 'Técnico' | 'Universitario' | 'Otro',
     categories: [] as string[],
     preferredPaymentMethods: [] as string[]
   });
@@ -129,7 +130,7 @@ export function Register({ onRegister, onSwitchToLogin }: RegisterProps) {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Validate email
@@ -144,8 +145,37 @@ export function Register({ onRegister, onSwitchToLogin }: RegisterProps) {
       return;
     }
 
-    onRegister(formData.userType, formData);
-  };
+   try {
+    const resultado = await registrarUsuario({
+      name: formData.name,
+      lastName: formData.lastName,
+      age: formData.age,
+      email: formData.email,
+      phone: formData.phone,
+      address: formData.address,
+      departamento: formData.departamento,
+      municipio: formData.municipio,
+      password: formData.password,
+      userType: formData.userType,
+      dui: formData.dui,
+      yearsExperience: formData.yearsExperience,
+      educationType: formData.educationType,
+      categories: formData.categories,
+      preferredPaymentMethods: formData.preferredPaymentMethods,
+    });
+
+    if (resultado.ok) {
+      alert(resultado.mensaje);
+      // Opcional: pasar al login automáticamente
+      onSwitchToLogin();
+    } else {
+      alert(resultado.mensaje); // Ejemplo: "Este correo ya está registrado"
+    }
+  } catch (error) {
+    console.error(error);
+    alert("Error de conexión con el servidor");
+  }
+};
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#FAF8F5] p-4 py-12">
@@ -303,6 +333,19 @@ export function Register({ onRegister, onSwitchToLogin }: RegisterProps) {
             </select>
           </div>
 
+          <div>
+            <label className="block text-sm mb-2 text-[#1D1D1B]">Municipio o zona amplia</label>
+            <input
+              type="text"
+              value={formData.municipio}
+              onChange={(e) => setFormData({ ...formData, municipio: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1]"
+              placeholder="Escribe tu municipio"
+              maxLength={80}
+              required
+            />
+          </div>
+
           {/* Professional-specific fields */}
           {formData.userType === 'professional' && (
             <>
@@ -325,12 +368,14 @@ export function Register({ onRegister, onSwitchToLogin }: RegisterProps) {
                     <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={20} />
                     <select
                       value={formData.educationType}
-                      onChange={(e) => setFormData({ ...formData, educationType: e.target.value as 'empirico' | 'titulo' })}
+                      onChange={(e) => setFormData({ ...formData, educationType: e.target.value as typeof formData.educationType })}
                       className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1] appearance-none bg-white"
                       required
                     >
-                      <option value="empirico">Empírico</option>
-                      <option value="titulo">Con Título</option>
+                      <option value="Empírico">Empírico</option>
+                      <option value="Técnico">Técnico</option>
+                      <option value="Universitario">Universitario</option>
+                      <option value="Otro">Otro</option>
                     </select>
                   </div>
                 </div>

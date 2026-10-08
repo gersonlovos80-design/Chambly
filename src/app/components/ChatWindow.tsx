@@ -5,7 +5,6 @@ import { RequestServiceModal } from './RequestServiceModal';
 import { RatingModal } from './RatingModal';
 import { InvoiceModal } from './InvoiceModal';
 import { InvoiceMessage } from './InvoiceMessage';
-import { PayInvoiceModal } from './PayInvoiceModal';
 
 interface InvoiceItem {
   id: string;
@@ -26,6 +25,10 @@ interface Message {
     total: number;
     isPaid: boolean;
     invoiceId: string;
+    paymentMethod: 'efectivo' | 'tarjeta';
+    status?: 'programada' | 'pendiente' | 'aceptada' | 'rechazada';
+    deliveryMode?: 'al_finalizar' | 'fecha';
+    scheduledDate?: string | null;
   };
 }
 
@@ -47,15 +50,13 @@ interface ChatWindowProps {
   currentUserId: string;
   currentUserData: any;
   userType: 'client' | 'professional';
-  onMarkFinished?: (rating: number) => void;
+  onMarkFinished?: () => void;
   onSendMessage?: (chatId: string, message: string) => void;
-  onRate?: (chatId: string, rating: number) => void;
+  onRate?: (chatId: string, rating: number, comment: string) => void;
   onViewProfile?: () => void;
   savedCards?: any[];
-  onSendInvoice?: (chatId: string, items: InvoiceItem[], total: number, expirationDate: string, paymentMethod: 'efectivo' | 'tarjeta') => void;
-  onPayInvoice?: (chatId: string, invoiceId: string, cardId: string) => void;
-  onMarkInvoiceAsPaid?: (chatId: string, invoiceId: string) => void;
-  requestedPaymentMethod?: 'efectivo' | 'tarjeta';
+  onSendInvoice?: (chatId: string, items: InvoiceItem[], deliveryMode: 'al_finalizar' | 'fecha', scheduledDate: string) => Promise<void>;
+  onRespondQuote?: (chatId: string, quoteId: string, decision: 'aceptada' | 'rechazada') => void;
 }
 
 export function ChatWindow({
@@ -73,16 +74,12 @@ export function ChatWindow({
   onViewProfile,
   savedCards = [],
   onSendInvoice,
-  onPayInvoice,
-  onMarkInvoiceAsPaid,
-  requestedPaymentMethod
+  onRespondQuote
 }: ChatWindowProps) {
   const [newMessage, setNewMessage] = useState('');
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
-  const [showPayInvoiceModal, setShowPayInvoiceModal] = useState(false);
-  const [selectedInvoice, setSelectedInvoice] = useState<{items: InvoiceItem[], total: number, invoiceId: string} | null>(null);
 
   // Show rating modal for client when entering a finished chat they haven't rated
   useEffect(() => {
@@ -109,49 +106,21 @@ export function ChatWindow({
   };
 
   const handleFinishWork = () => {
-    // Professional marks work as finished - show rating modal first
-    setShowRatingModal(true);
+    onMarkFinished?.();
   };
 
-  const handleRatingSubmit = (rating: number) => {
-    if (userType === 'professional') {
-      // Professional is rating the client before finishing
-      if (onMarkFinished) {
-        onMarkFinished(rating);
-      }
-    } else {
-      // Client is rating the professional after work is done
-      if (onRate) {
-        onRate(chatData.id, rating);
-      }
+  const handleRatingSubmit = (rating: number, comment: string) => {
+    if (userType === 'client' && onRate) {
+      onRate(chatData.id, rating, comment);
     }
     setShowRatingModal(false);
   };
 
-  const handleSendInvoice = (items: InvoiceItem[], total: number, expirationDate: string, paymentMethod: 'efectivo' | 'tarjeta') => {
+  const handleSendInvoice = async (items: InvoiceItem[], deliveryMode: 'al_finalizar' | 'fecha', scheduledDate: string) => {
     if (onSendInvoice) {
-      onSendInvoice(chatData.id, items, total, expirationDate, paymentMethod);
+      await onSendInvoice(chatData.id, items, deliveryMode, scheduledDate);
     }
     setShowInvoiceModal(false);
-  };
-
-  const handlePayInvoice = (invoiceData: {items: InvoiceItem[], total: number, invoiceId: string}) => {
-    setSelectedInvoice(invoiceData);
-    setShowPayInvoiceModal(true);
-  };
-
-  const handleConfirmPayment = (cardId: string) => {
-    if (selectedInvoice && onPayInvoice) {
-      onPayInvoice(chatData.id, selectedInvoice.invoiceId, cardId);
-    }
-    setShowPayInvoiceModal(false);
-    setSelectedInvoice(null);
-  };
-
-  const handleMarkAsPaid = (invoiceId: string) => {
-    if (onMarkInvoiceAsPaid) {
-      onMarkInvoiceAsPaid(chatData.id, invoiceId);
-    }
   };
 
   return (
@@ -191,22 +160,24 @@ export function ChatWindow({
 
             {/* Right: Actions */}
             <div className="flex justify-end gap-1">
-              {userType === 'professional' && chatData.isActive && (
+              {userType === 'professional' && (
                 <>
                   <button
                     onClick={() => setShowInvoiceModal(true)}
                     className="p-2 bg-[#FFC900] hover:bg-[#e6b500] text-[#1D1D1B] rounded-lg transition-colors"
-                    title="Enviar cobro"
+                    title="Enviar presupuesto"
                   >
                     <CreditCard size={20} />
                   </button>
-                  <button
-                    onClick={handleFinishWork}
-                    className="p-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
-                    title="Marcar como finalizado"
-                  >
-                    <CheckCircle size={20} />
-                  </button>
+                  {chatData.isActive && (
+                    <button
+                      onClick={handleFinishWork}
+                      className="p-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
+                      title="Marcar como finalizado"
+                    >
+                      <CheckCircle size={20} />
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -245,21 +216,13 @@ export function ChatWindow({
                       jobType={chatData.jobType}
                       timestamp={message.timestamp}
                       userType={userType}
-                      isPaid={message.invoiceData.isPaid}
-                      expirationDate={message.invoiceData.expirationDate}
                       paymentMethod={message.invoiceData.paymentMethod}
-                      onPayInvoice={
-                        userType === 'client' && !message.invoiceData.isPaid && message.invoiceData.paymentMethod === 'tarjeta'
-                          ? () => handlePayInvoice({
-                              items: message.invoiceData!.items,
-                              total: message.invoiceData!.total,
-                              invoiceId: message.invoiceData!.invoiceId
-                            })
-                          : undefined
-                      }
-                      onMarkAsPaid={
-                        userType === 'professional' && !message.invoiceData.isPaid && message.invoiceData.paymentMethod === 'efectivo'
-                          ? () => handleMarkAsPaid(message.invoiceData!.invoiceId)
+                      status={message.invoiceData.status}
+                      deliveryMode={message.invoiceData.deliveryMode}
+                      scheduledDate={message.invoiceData.scheduledDate}
+                      onRespond={
+                        userType === 'client' && message.invoiceData.status === 'pendiente'
+                          ? (decision) => onRespondQuote?.(chatData.id, message.invoiceData!.invoiceId, decision)
                           : undefined
                       }
                     />
@@ -381,23 +344,6 @@ export function ChatWindow({
           clientName={chatData.otherPersonName}
           jobType={chatData.jobType}
           onSendInvoice={handleSendInvoice}
-          requestedPaymentMethod={requestedPaymentMethod}
-        />
-      )}
-
-      {/* Pay Invoice Modal - For Client to pay */}
-      {userType === 'client' && selectedInvoice && (
-        <PayInvoiceModal
-          isOpen={showPayInvoiceModal}
-          onClose={() => {
-            setShowPayInvoiceModal(false);
-            setSelectedInvoice(null);
-          }}
-          onConfirmPayment={handleConfirmPayment}
-          savedCards={savedCards}
-          amount={selectedInvoice.total}
-          professionalName={chatData.otherPersonName}
-          jobType={chatData.jobType}
         />
       )}
     </>

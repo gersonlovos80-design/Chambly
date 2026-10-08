@@ -1,5 +1,18 @@
 import { useState } from 'react';
-import { X, Banknote, CreditCard, CheckCircle } from 'lucide-react';
+import { X, Banknote, CreditCard } from 'lucide-react';
+
+export interface ServiceRequestPayload {
+  professionalId: string;
+  professionalName: string;
+  category: string;
+  description: string;
+  departamento: string;
+  municipio: string;
+  presupuesto: string;
+  fechaServicio: string;
+  horaServicio: string;
+  paymentMethod: 'efectivo' | 'tarjeta';
+}
 
 interface RequestServiceModalProps {
   isOpen: boolean;
@@ -8,35 +21,61 @@ interface RequestServiceModalProps {
   professionalName: string;
   professionalId: string;
   category: string;
-  savedCards: any[];
-  onSendRequest?: (professionalId: string, professionalName: string, category: string, paymentMethod: 'efectivo' | 'tarjeta') => void;
+  onSendRequest: (payload: ServiceRequestPayload) => Promise<void>;
 }
 
-export function RequestServiceModal({ isOpen, onClose, clientData, professionalName, professionalId, category, savedCards, onSendRequest }: RequestServiceModalProps) {
+const departments = [
+  'Ahuachapán', 'Santa Ana', 'Sonsonate', 'Chalatenango', 'La Libertad',
+  'San Salvador', 'Cuscatlán', 'La Paz', 'Cabañas', 'San Vicente',
+  'Usulután', 'San Miguel', 'Morazán', 'La Unión'
+];
+
+export function RequestServiceModal({ isOpen, onClose, clientData, professionalName, professionalId, category, onSendRequest }: RequestServiceModalProps) {
   const [description, setDescription] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'tarjeta' | null>(null);
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [department, setDepartment] = useState(clientData.departamento || '');
+  const [municipality, setMunicipality] = useState(clientData.municipio || '');
+  const [budget, setBudget] = useState('');
+  const [serviceDate, setServiceDate] = useState('');
+  const [serviceTime, setServiceTime] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Validate payment method
-    if (!paymentMethod) {
-      alert('Por favor selecciona un método de pago preferido');
+    if (!description.trim()) {
+      setError('Escribe una descripción del trabajo antes de enviar la solicitud.');
       return;
     }
-
-    // Call onSendRequest if provided
-    if (onSendRequest) {
-      onSendRequest(professionalId, professionalName, category, paymentMethod);
+    if (!paymentMethod || !department || !municipality.trim()) {
+      setError('Selecciona el método de pago, departamento y municipio del servicio.');
+      return;
     }
-
-    const paymentInfo = paymentMethod === 'efectivo'
-      ? 'Efectivo (preferencia del cliente)'
-      : 'Tarjeta (preferencia del cliente)';
-
-    alert(`Solicitud enviada exitosamente\nMétodo de pago preferido: ${paymentInfo}`);
-    onClose();
+    setError('');
+    setSaving(true);
+    try {
+      await onSendRequest({
+        professionalId,
+        professionalName,
+        category,
+        description,
+        departamento: department,
+        municipio: municipality.trim(),
+        presupuesto: budget,
+        fechaServicio: serviceDate,
+        horaServicio: serviceTime,
+        paymentMethod
+      });
+      setDescription('');
+      setBudget('');
+      setServiceDate('');
+      setServiceTime('');
+      onClose();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'No se pudo enviar la solicitud.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -89,10 +128,25 @@ export function RequestServiceModal({ isOpen, onClose, clientData, professionalN
               <label className="block text-sm font-medium text-[#1D1D1B] mb-2">
                 Ubicación
               </label>
+              <select
+                value={department}
+                onChange={(event) => setDepartment(event.target.value)}
+                required
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-[#FAF8F5] text-[#1D1D1B]"
+              >
+                <option value="">Selecciona un departamento</option>
+                {departments.map(item => <option key={item} value={item}>{item}</option>)}
+              </select>
+              <label className="mt-4 mb-2 block text-sm font-medium text-[#1D1D1B]">
+                Municipio o zona amplia
+              </label>
               <input
                 type="text"
-                value={clientData.departamento}
-                disabled
+                value={municipality}
+                onChange={(event) => setMunicipality(event.target.value)}
+                maxLength={80}
+                required
+                placeholder="Escribe el municipio"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-[#FAF8F5] text-[#1D1D1B]"
               />
             </div>
@@ -121,6 +175,7 @@ export function RequestServiceModal({ isOpen, onClose, clientData, professionalN
                 placeholder="Describe brevemente el trabajo que necesitas. Incluye detalles importantes como el tamaño del área, materiales necesarios, fecha preferida, etc."
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1] min-h-[150px]"
                 maxLength={500}
+                minLength={1}
                 required
               />
               <p className="text-sm text-gray-500 mt-2">
@@ -137,6 +192,10 @@ export function RequestServiceModal({ isOpen, onClose, clientData, professionalN
                 <span className="text-gray-600">$</span>
                 <input
                   type="number"
+                  value={budget}
+                  onChange={(event) => setBudget(event.target.value)}
+                  min="0"
+                  step="0.01"
                   placeholder="150"
                   className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1]"
                 />
@@ -150,9 +209,21 @@ export function RequestServiceModal({ isOpen, onClose, clientData, professionalN
               </label>
               <input
                 type="date"
+                value={serviceDate}
+                onChange={(event) => setServiceDate(event.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1]"
-                required
                 min={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#1D1D1B] mb-2">
+                Hora aproximada (opcional)
+              </label>
+              <input
+                type="time"
+                value={serviceTime}
+                onChange={(event) => setServiceTime(event.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1]"
               />
             </div>
 
@@ -170,7 +241,6 @@ export function RequestServiceModal({ isOpen, onClose, clientData, professionalN
                   type="button"
                   onClick={() => {
                     setPaymentMethod('efectivo');
-                    setSelectedCardId(null);
                   }}
                   className={`p-4 border-2 rounded-xl transition-all ${
                     paymentMethod === 'efectivo'
@@ -195,10 +265,12 @@ export function RequestServiceModal({ isOpen, onClose, clientData, professionalN
                 >
                   <CreditCard size={28} className={paymentMethod === 'tarjeta' ? 'text-[#FFC900] mx-auto' : 'text-gray-600 mx-auto'} />
                   <p className="mt-2 font-medium text-[#1D1D1B]">Tarjeta</p>
-                  <p className="text-xs text-gray-600 mt-1">Pago procesado por la app</p>
+                  <p className="text-xs text-gray-600 mt-1">Preferencia; el pago no se procesa en la app</p>
                 </button>
               </div>
             </div>
+
+            {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
             {/* Actions */}
             <div className="flex gap-4 pt-4">
@@ -211,9 +283,10 @@ export function RequestServiceModal({ isOpen, onClose, clientData, professionalN
               </button>
               <button
                 type="submit"
-                className="flex-1 px-6 py-3 bg-[#FFC900] text-[#1D1D1B] font-medium rounded-lg hover:bg-[#e6b500] transition-colors"
+                disabled={saving}
+                className="flex-1 px-6 py-3 bg-[#FFC900] text-[#1D1D1B] font-medium rounded-lg hover:bg-[#e6b500] transition-colors disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Enviar Solicitud
+                {saving ? 'Enviando...' : 'Enviar Solicitud'}
               </button>
             </div>
           </form>

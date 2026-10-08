@@ -10,9 +10,10 @@ interface MenuSidebarProps {
   onShowTutorial?: () => void;
   onToggleMode?: () => void;
   roleHistory?: { date: string; from: string; to: string }[];
+  notificationCount?: number;
 }
 
-export function MenuSidebar({ isOpen, onClose, userType, onNavigate, onLogout, onShowTutorial, onToggleMode, roleHistory = [] }: MenuSidebarProps) {
+export function MenuSidebar({ isOpen, onClose, userType, onNavigate, onLogout, onShowTutorial, onToggleMode, roleHistory = [], notificationCount = 0 }: MenuSidebarProps) {
   const [showHistory, setShowHistory] = useState(false);
 
   if (!isOpen) return null;
@@ -74,6 +75,22 @@ export function MenuSidebar({ isOpen, onClose, userType, onNavigate, onLogout, o
               <>
                 <li>
                   <button
+                    onClick={() => handleNavigate('notifications')}
+                    className="w-full flex items-center gap-3 p-4 rounded-lg hover:bg-gray-100 transition-colors text-left"
+                  >
+                    <span className="relative">
+                      <Bell size={20} className="text-gray-600" />
+                      {notificationCount > 0 && (
+                        <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] leading-4 text-white">
+                          {notificationCount > 99 ? '99+' : notificationCount}
+                        </span>
+                      )}
+                    </span>
+                    <span>Notificaciones</span>
+                  </button>
+                </li>
+                <li>
+                  <button
                     onClick={() => handleNavigate('active-jobs')}
                     className="w-full flex items-center gap-3 p-4 rounded-lg hover:bg-gray-100 transition-colors text-left"
                   >
@@ -100,7 +117,14 @@ export function MenuSidebar({ isOpen, onClose, userType, onNavigate, onLogout, o
                     onClick={() => handleNavigate('notifications')}
                     className="w-full flex items-center gap-3 p-4 rounded-lg hover:bg-gray-100 transition-colors text-left"
                   >
-                    <Bell size={20} className="text-gray-600" />
+                    <span className="relative">
+                      <Bell size={20} className="text-gray-600" />
+                      {notificationCount > 0 && (
+                        <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] leading-4 text-white">
+                          {notificationCount > 99 ? '99+' : notificationCount}
+                        </span>
+                      )}
+                    </span>
                     <span>Notificaciones</span>
                   </button>
                 </li>
@@ -138,8 +162,7 @@ export function MenuSidebar({ isOpen, onClose, userType, onNavigate, onLogout, o
             </li>
 
             {/* Historial desplegable de roles */}
-            {roleHistory.length > 0 && (
-              <li className="pt-2 border-t border-gray-100 mt-2">
+            <li className="pt-2 border-t border-gray-100 mt-2">
                 <button
                   type="button"
                   onClick={() => setShowHistory(!showHistory)}
@@ -154,16 +177,21 @@ export function MenuSidebar({ isOpen, onClose, userType, onNavigate, onLogout, o
 
                 {showHistory && (
                   <div className="mt-2 pl-3 pr-1 space-y-2 max-h-36 overflow-y-auto">
-                    {roleHistory.map((item, idx) => (
-                      <div key={idx} className="text-xs text-gray-600 bg-gray-50 p-2 rounded border border-gray-100">
-                        <p className="font-semibold text-gray-700">{item.from} ➔ {item.to}</p>
-                        <span className="text-[10px] text-gray-400">{item.date}</span>
-                      </div>
-                    ))}
+                    {roleHistory.length === 0 ? (
+                      <p className="rounded border border-gray-100 bg-gray-50 p-3 text-xs text-gray-500">
+                        Aún no has cambiado de modo.
+                      </p>
+                    ) : (
+                      roleHistory.map((item, idx) => (
+                        <div key={`${item.date}-${idx}`} className="text-xs text-gray-600 bg-gray-50 p-2 rounded border border-gray-100">
+                          <p className="font-semibold text-gray-700">{item.from} ➔ {item.to}</p>
+                          <span className="text-[10px] text-gray-400">{item.date}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
-              </li>
-            )}
+            </li>
 
             <li>
               <button

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Star, MapPin, Filter, CreditCard, Banknote } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { obtenerProfesionales } from '../../services/api';
 
 interface ProfessionalBrowserProps {
   category: string;
@@ -131,19 +132,41 @@ const mockProfessionals = [
 
 export function ProfessionalBrowser({ category, onBack, onViewProfile }: ProfessionalBrowserProps) {
   const [selectedDepartamento, setSelectedDepartamento] = useState<string>('');
+  const [selectedMunicipio, setSelectedMunicipio] = useState<string>('');
   const [minRating, setMinRating] = useState<number>(0);
+  const [professionals, setProfessionals] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  // Filter professionals by category
-  const categoryFiltered = mockProfessionals.filter(prof =>
-    prof.categories.includes(category)
-  );
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    obtenerProfesionales(category)
+      .then(result => {
+        if (!cancelled) setProfessionals(result.profesionales);
+      })
+      .catch(loadError => {
+        console.error('No se pudieron cargar los profesionales:', loadError);
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar los profesionales.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [category]);
 
   // Apply departamento and rating filters
-  const filteredProfessionals = categoryFiltered.filter(prof => {
+  const filteredProfessionals = professionals.filter(prof => {
     const matchesDepartamento = selectedDepartamento ? prof.departamento === selectedDepartamento : true;
+    const matchesMunicipio = selectedMunicipio ? prof.municipio === selectedMunicipio : true;
     const matchesRating = minRating > 0 ? prof.rating >= minRating : true;
-    return matchesDepartamento && matchesRating;
+    return matchesDepartamento && matchesMunicipio && matchesRating;
   });
+  const municipalities = [...new Set(professionals
+    .filter(prof => !selectedDepartamento || prof.departamento === selectedDepartamento)
+    .map(prof => prof.municipio)
+    .filter(Boolean))].sort();
 
   return (
     <div className="min-h-screen bg-[#FAF8F5]">
@@ -164,7 +187,7 @@ export function ProfessionalBrowser({ category, onBack, onViewProfile }: Profess
         {/* Title */}
         <div className="mb-6">
           <h1 className="text-3xl mb-2">Profesionales de {category}</h1>
-          <p className="text-gray-600">{filteredProfessionals.length} profesionales encontrados</p>
+          <p className="text-gray-600">{loading ? 'Cargando profesionales...' : `${filteredProfessionals.length} profesionales encontrados`}</p>
         </div>
 
         {/* Filter Section */}
@@ -174,7 +197,7 @@ export function ProfessionalBrowser({ category, onBack, onViewProfile }: Profess
             <span className="font-medium text-[#1D1D1B]">Filtros</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Departamento Filter */}
             <div>
               <label className="block text-sm mb-2 text-[#1D1D1B]">Departamento</label>
@@ -187,6 +210,18 @@ export function ProfessionalBrowser({ category, onBack, onViewProfile }: Profess
                 {departamentos.map(dept => (
                   <option key={dept} value={dept}>{dept}</option>
                 ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm mb-2 text-[#1D1D1B]">Municipio o zona amplia</label>
+              <select
+                value={selectedMunicipio}
+                onChange={(e) => setSelectedMunicipio(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1] bg-white"
+              >
+                <option value="">Todos los municipios</option>
+                {municipalities.map(item => <option key={item} value={item}>{item}</option>)}
               </select>
             </div>
 
@@ -207,11 +242,12 @@ export function ProfessionalBrowser({ category, onBack, onViewProfile }: Profess
             </div>
           </div>
 
-          {(selectedDepartamento || minRating > 0) && (
+          {(selectedDepartamento || selectedMunicipio || minRating > 0) && (
             <div className="mt-4 flex justify-end">
               <button
                 onClick={() => {
                   setSelectedDepartamento('');
+                  setSelectedMunicipio('');
                   setMinRating(0);
                 }}
                 className="px-4 py-2 text-sm text-[#685AA1] hover:text-[#685AA1]/80 underline"
@@ -223,11 +259,15 @@ export function ProfessionalBrowser({ category, onBack, onViewProfile }: Profess
         </div>
 
         {/* Professionals List */}
-        {filteredProfessionals.length === 0 ? (
+        {error ? (
+          <div role="alert" className="bg-red-50 rounded-xl p-6 text-red-700">{error}</div>
+        ) : loading ? (
+          <div className="bg-white rounded-xl shadow-sm p-12 text-center text-gray-600">Cargando profesionales verificados...</div>
+        ) : filteredProfessionals.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm p-12 text-center">
             <p className="text-gray-600 text-lg mb-2">No hay profesionales disponibles</p>
             <p className="text-gray-500 text-sm">
-              {selectedDepartamento || minRating > 0
+              {selectedDepartamento || selectedMunicipio || minRating > 0
                 ? 'Intenta ajustar los filtros para ver más resultados'
                 : `No hay profesionales de ${category} disponibles en este momento`
               }
@@ -259,7 +299,7 @@ export function ProfessionalBrowser({ category, onBack, onViewProfile }: Profess
                         </h3>
                         <div className="flex items-center gap-2 text-gray-600 mt-1">
                           <MapPin size={16} />
-                          <span className="text-sm">{professional.departamento}</span>
+                          <span className="text-sm">{[professional.municipio, professional.departamento].filter(Boolean).join(', ')}</span>
                         </div>
                       </div>
 
@@ -295,13 +335,13 @@ export function ProfessionalBrowser({ category, onBack, onViewProfile }: Profess
                     <div className="flex items-center gap-2 mb-4">
                       <span className="text-xs text-gray-600">Métodos de pago:</span>
                       <div className="flex gap-2">
-                        {professional.preferredPaymentMethods.includes('efectivo') && (
+                        {professional.preferredPaymentMethods?.includes('efectivo') && (
                           <div className="flex items-center gap-1 px-2 py-1 bg-green-50 border border-green-200 rounded-md">
                             <Banknote size={14} className="text-green-600" />
                             <span className="text-xs text-green-700 font-medium">Efectivo</span>
                           </div>
                         )}
-                        {professional.preferredPaymentMethods.includes('tarjeta') && (
+                        {professional.preferredPaymentMethods?.includes('tarjeta') && (
                           <div className="flex items-center gap-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded-md">
                             <CreditCard size={14} className="text-blue-600" />
                             <span className="text-xs text-blue-700 font-medium">Tarjeta</span>
@@ -312,8 +352,8 @@ export function ProfessionalBrowser({ category, onBack, onViewProfile }: Profess
 
                     {/* Price and Action */}
                     <div className="flex items-center justify-between pt-4 border-t">
-                      <span className="text-xl font-medium text-green-600">
-                        {professional.price}
+                      <span className="text-sm text-gray-500">
+                        {professional.reviewCount ? `${professional.reviewCount} reseñas verificadas` : 'Aún sin reseñas'}
                       </span>
                       <button
                         onClick={() => onViewProfile(professional)}

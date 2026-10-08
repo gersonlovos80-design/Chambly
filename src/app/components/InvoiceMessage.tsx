@@ -1,4 +1,4 @@
-import { Receipt, CreditCard, Banknote, Calendar, CheckCircle } from 'lucide-react';
+import { Receipt, CreditCard, Banknote, Calendar, CheckCircle, XCircle } from 'lucide-react';
 
 interface InvoiceItem {
   id: string;
@@ -15,11 +15,11 @@ interface InvoiceMessageProps {
   jobType: string;
   timestamp: string;
   userType: 'client' | 'professional';
-  isPaid?: boolean;
-  expirationDate?: string;
+  status?: 'programada' | 'pendiente' | 'aceptada' | 'rechazada';
+  deliveryMode?: 'al_finalizar' | 'fecha';
+  scheduledDate?: string | null;
   paymentMethod: 'efectivo' | 'tarjeta';
-  onPayInvoice?: () => void;
-  onMarkAsPaid?: () => void;
+  onRespond?: (decision: 'aceptada' | 'rechazada') => void;
 }
 
 export function InvoiceMessage({
@@ -30,17 +30,14 @@ export function InvoiceMessage({
   jobType,
   timestamp,
   userType,
-  isPaid = false,
-  expirationDate,
+  status = 'pendiente',
+  deliveryMode,
+  scheduledDate,
   paymentMethod,
-  onPayInvoice,
-  onMarkAsPaid
+  onRespond
 }: InvoiceMessageProps) {
   const materialsTotal = items.filter(i => i.type === 'material').reduce((sum, i) => sum + i.amount, 0);
   const laborTotal = items.filter(i => i.type === 'labor').reduce((sum, i) => sum + i.amount, 0);
-
-  // Check if expired
-  const isExpired = expirationDate ? new Date(expirationDate) < new Date() : false;
 
   return (
     <div className="max-w-md mx-auto my-4">
@@ -49,7 +46,7 @@ export function InvoiceMessage({
         <div className="bg-[#685AA1] text-white p-4">
           <div className="flex items-center gap-2 mb-2">
             <Receipt size={24} />
-            <h3 className="text-lg font-medium">Factura de Servicio</h3>
+            <h3 className="text-lg font-medium">Presupuesto de Servicio</h3>
           </div>
           <p className="text-sm text-white/80">{timestamp}</p>
         </div>
@@ -75,14 +72,20 @@ export function InvoiceMessage({
                   <CreditCard size={16} className="text-blue-600" />
                 )}
                 <span className="text-sm text-gray-600">
-                  <span className="font-medium text-[#1D1D1B]">Método:</span> {paymentMethod === 'efectivo' ? 'Efectivo' : 'Tarjeta'}
+                  <span className="font-medium text-[#1D1D1B]">Pago preferido:</span> {paymentMethod === 'efectivo' ? 'Efectivo' : 'Tarjeta'}
                 </span>
               </div>
-              {expirationDate && (
+              {deliveryMode === 'al_finalizar' && (
                 <div className="flex items-center gap-2">
-                  <Calendar size={16} className={isExpired && !isPaid ? 'text-red-600' : 'text-gray-600'} />
-                  <span className={`text-sm ${isExpired && !isPaid ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
-                    {isExpired && !isPaid ? 'Venció' : 'Vence'}: {new Date(expirationDate).toLocaleDateString('es-ES')}
+                  <Calendar size={16} className="text-gray-600" />
+                  <span className="text-sm text-gray-600">Se envía al finalizar el servicio</span>
+                </div>
+              )}
+              {deliveryMode === 'fecha' && scheduledDate && (
+                <div className="flex items-center gap-2">
+                  <Calendar size={16} className="text-gray-600" />
+                  <span className="text-sm text-gray-600">
+                    Enviado para: {new Date(`${scheduledDate}T00:00:00`).toLocaleDateString('es-SV')}
                   </span>
                 </div>
               )}
@@ -130,53 +133,51 @@ export function InvoiceMessage({
             </div>
           </div>
 
-          {/* Payment Status / Action */}
-          {isPaid ? (
-            <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+          {/* Quote response */}
+          {status === 'aceptada' ? (
+            <div className="mt-6 rounded-lg border border-green-200 bg-green-50 p-4">
               <div className="flex items-center gap-2 text-green-700">
                 <CheckCircle size={18} />
-                <p className="text-sm font-medium">Pago Completado</p>
+                <p className="text-sm font-medium">Presupuesto aceptado por el cliente</p>
               </div>
             </div>
-          ) : isExpired ? (
-            <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+          ) : status === 'rechazada' ? (
+            <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4">
               <div className="flex items-center gap-2 text-red-700">
-                <Calendar size={18} />
-                <p className="text-sm font-medium">Cobro Expirado - No Pagado</p>
+                <XCircle size={18} />
+                <p className="text-sm font-medium">Presupuesto rechazado por el cliente</p>
               </div>
             </div>
-          ) : userType === 'client' && paymentMethod === 'tarjeta' && onPayInvoice ? (
-            <button
-              onClick={onPayInvoice}
-              className="w-full mt-6 px-6 py-3 bg-[#FFC900] text-[#1D1D1B] font-medium rounded-lg hover:bg-[#e6b500] transition-colors flex items-center justify-center gap-2"
-            >
-              <CreditCard size={20} />
-              Realizar Pago con Tarjeta
-            </button>
-          ) : userType === 'client' && paymentMethod === 'efectivo' ? (
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          ) : status === 'programada' ? (
+            <div className="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
               <p className="text-sm text-blue-800">
-                Pago en efectivo. El profesional confirmará cuando reciba el pago.
+                El presupuesto está programado y todavía no se ha enviado al cliente.
               </p>
             </div>
-          ) : userType === 'professional' && paymentMethod === 'efectivo' && onMarkAsPaid ? (
-            <button
-              onClick={onMarkAsPaid}
-              className="w-full mt-6 px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-            >
-              <CheckCircle size={20} />
-              Marcar como Pagado (Efectivo)
-            </button>
-          ) : userType === 'professional' && paymentMethod === 'tarjeta' ? (
-            <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <p className="text-sm text-yellow-800">
-                Esperando que el cliente realice el pago con tarjeta.
+          ) : userType === 'client' && onRespond ? (
+            <div className="mt-6">
+              <p className="mb-3 text-sm text-gray-700">
+                Revisa el desglose. Puedes aceptar este presupuesto o rechazarlo si no estás de acuerdo.
               </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => onRespond('rechazada')}
+                  className="flex-1 rounded-lg border border-red-300 px-4 py-3 font-medium text-red-700 hover:bg-red-50"
+                >
+                  Rechazar
+                </button>
+                <button
+                  onClick={() => onRespond('aceptada')}
+                  className="flex-1 rounded-lg bg-[#FFC900] px-4 py-3 font-medium text-[#1D1D1B] hover:bg-[#e6b500]"
+                >
+                  Aceptar presupuesto
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="mt-6 rounded-lg border border-yellow-200 bg-yellow-50 p-4">
               <p className="text-sm text-yellow-800">
-                Pendiente de pago
+                Esperando la respuesta del cliente.
               </p>
             </div>
           )}

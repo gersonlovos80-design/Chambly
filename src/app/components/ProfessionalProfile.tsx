@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft, Camera, MapPin, Star, Upload, X, Edit2, Save, CreditCard, Banknote } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
-import { RequestServiceModal } from './RequestServiceModal';
+import { RequestServiceModal, type ServiceRequestPayload } from './RequestServiceModal';
 
 interface ProfessionalProfileProps {
   userData: any;
@@ -10,9 +10,8 @@ interface ProfessionalProfileProps {
   clientData?: any;
   selectedCategory?: string;
   onViewReviews?: () => void;
-  savedCards?: any[];
   sentRequests?: any[];
-  onSendRequest?: (professionalId: string, professionalName: string, category: string, paymentMethod: 'efectivo' | 'tarjeta') => void;
+  onSendRequest?: (payload: ServiceRequestPayload) => Promise<void>;
 }
 
 const getCategoryColor = (category: string): string => {
@@ -40,7 +39,7 @@ const departamentos = [
   'Usulután', 'San Miguel', 'Morazán', 'La Unión'
 ];
 
-export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData, selectedCategory, onViewReviews, savedCards = [], sentRequests = [], onSendRequest }: ProfessionalProfileProps) {
+export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData, selectedCategory, onViewReviews, sentRequests = [], onSendRequest }: ProfessionalProfileProps) {
   const [profilePhoto, setProfilePhoto] = useState<string>(userData.photo || '');
   const [gallery, setGallery] = useState<string[]>([
     'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400',
@@ -136,7 +135,7 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
   const professionalId = String(userData.id || userData.email || '');
   const hasRequestSent = sentRequests.some(req => String(req.professionalId) === professionalId);
 
-  const rating = 4.5;
+  const rating = Number(userData.rating) || 0;
 
   return (
     <div className="min-h-screen bg-[#FAF8F5]">
@@ -235,7 +234,7 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
                 ))}
               </div>
               <span className="text-lg font-medium">{rating}</span>
-              <span className="text-gray-600">(24 reseñas)</span>
+              <span className="text-gray-600">({Number(userData.reviewCount) || 0} reseñas)</span>
             </div>
 
             {/* View Reviews Link */}
@@ -531,8 +530,7 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
           professionalName={`${userData.name}${userData.lastName ? ' ' + userData.lastName : ''}`}
           professionalId={professionalId}
           category={selectedCategory || userData.categories?.[0] || 'Servicio General'}
-          savedCards={savedCards}
-          onSendRequest={onSendRequest}
+          onSendRequest={onSendRequest || (async () => { throw new Error('No se pudo conectar con el envío de solicitudes.'); })}
         />
       )}
     </div>

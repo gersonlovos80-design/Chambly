@@ -12,11 +12,13 @@ interface ProfessionalDashboardProps {
   onViewClient?: (clientData: any) => void;
   onAcceptRequest?: (requestId: number, clientName: string, jobType: string, clientPhoto: string, scheduledDate: string, description: string, paymentMethod?: 'efectivo' | 'tarjeta') => void;
   onRejectRequest?: (requestId: number) => void;
+  serviceRequests?: any[];
   acceptedRequestIds?: number[];
   rejectedRequestIds?: number[];
   onShowTutorial?: () => void;
   onToggleMode?: () => void;
   roleHistory?: {date: string; from: string; to: string}[];
+  notificationCount?: number;
 }
 
 const departamentos = [
@@ -24,20 +26,6 @@ const departamentos = [
   'San Salvador', 'Cuscatlán', 'La Paz', 'Cabañas', 'San Vicente',
   'Usulután', 'San Miguel', 'Morazán', 'La Unión'
 ];
-
-const getCategoryColor = (category: string): string => {
-  const colors: { [key: string]: string } = {
-    'Limpieza': 'bg-[#E8F0FE] text-[#1D1D1B]',
-    'Construcción': 'bg-[#FFEFE2] text-[#1D1D1B]',
-    'Pintura': 'bg-[#F3E8FF] text-[#1D1D1B]',
-    'Plomería': 'bg-[#D7F9FF] text-[#1D1D1B]',
-    'Electricidad': 'bg-[#FFF9C4] text-[#1D1D1B]',
-    'Jardinería': 'bg-[#E2FBE5] text-[#1D1D1B]',
-    'Mudanza': 'bg-[#FFEBEE] text-[#1D1D1B]',
-    'Ensamblaje de Muebles': 'bg-[#E8EAF6] text-[#1D1D1B]'
-  };
-  return colors[category] || 'bg-[#D3CFED] text-[#685AA1]';
-};
 
 const allRequests = [
   {
@@ -120,8 +108,9 @@ const allRequests = [
   }
 ];
 
-export function ProfessionalDashboard({ userName, userData, userCategories, onLogout, onNavigate, onViewClient, onAcceptRequest, onRejectRequest, acceptedRequestIds = [], rejectedRequestIds = [], onShowTutorial, onToggleMode, roleHistory }: ProfessionalDashboardProps) {
+export function ProfessionalDashboard({ userName, userData, userCategories, onLogout, onNavigate, onViewClient, onAcceptRequest, onRejectRequest, serviceRequests = [], onShowTutorial, onToggleMode, roleHistory, notificationCount = 0 }: ProfessionalDashboardProps) {
   const [selectedDepartamento, setSelectedDepartamento] = useState<string>('');
+  const [selectedMunicipio, setSelectedMunicipio] = useState<string>('');
   const [menuOpen, setMenuOpen] = useState(false);
 
   const handleViewClient = (request: any) => {
@@ -129,11 +118,8 @@ export function ProfessionalDashboard({ userName, userData, userCategories, onLo
       name: request.clientName.split(' ')[0],
       lastName: request.clientName.split(' ')[1] || '',
       departamento: request.departamento,
-      email: 'cliente@ejemplo.com',
-      phone: '7000-0000',
-      address: 'Dirección del cliente',
-      dui: '00000000-0',
-      photo: request.clientPhoto
+      photo: request.clientPhoto || '',
+      id: request.cliente_id
     };
     if (onViewClient) {
       onViewClient(mockClientData);
@@ -142,7 +128,7 @@ export function ProfessionalDashboard({ userName, userData, userCategories, onLo
 
   const handleAcceptRequest = (request: any) => {
     if (onAcceptRequest) {
-      onAcceptRequest(request.id, request.clientName, request.jobType, request.clientPhoto, request.scheduledDateDisplay, request.description, request.paymentMethod);
+      onAcceptRequest(Number(request.id), request.clientName, request.jobType, request.clientPhoto, request.scheduledDateDisplay, request.description, request.paymentMethod);
     }
   };
 
@@ -152,35 +138,45 @@ export function ProfessionalDashboard({ userName, userData, userCategories, onLo
     }
   };
 
-  // Filter requests based on professional's categories
-  const categoryFilteredRequests = allRequests.filter(request =>
-    userCategories.includes(request.jobType)
-  );
-
-  // Filter out accepted and rejected requests
-  const availableRequests = categoryFilteredRequests.filter(request =>
-    !acceptedRequestIds.includes(request.id) && !rejectedRequestIds.includes(request.id)
-  );
+  const availableRequests = serviceRequests
+    .filter(request => request.estado === 'pendiente')
+    .map((request: any) => ({
+      ...request,
+      id: Number(request.id),
+      clientName: `${request.cliente_nombre || ''} ${request.cliente_apellido || ''}`.trim() || 'Cliente',
+      clientPhoto: request.foto_cliente || '',
+      jobType: request.categoria || 'Servicio',
+      budget: request.presupuesto ? `$${request.presupuesto}` : 'Presupuesto no indicado',
+      time: request.fecha_solicitud,
+      scheduledDateDisplay: [request.fecha_servicio, request.hora_servicio].filter(Boolean).join(' · ') || 'Fecha por coordinar',
+      paymentMethod: String(request.metodo_pago || '').toLowerCase()
+    }))
+    .filter(request => userCategories.includes(request.jobType));
 
   // Apply departamento filter
-  const departamentoFiltered = selectedDepartamento
-    ? availableRequests.filter(request => request.departamento === selectedDepartamento)
-    : availableRequests;
+  const departamentoFiltered = availableRequests.filter(request =>
+    (!selectedDepartamento || request.departamento === selectedDepartamento) &&
+    (!selectedMunicipio || request.municipio === selectedMunicipio)
+  );
 
   // Sort by scheduled date (closest first)
   const filteredRequests = [...departamentoFiltered].sort((a, b) => {
-    return new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime();
+    return new Date(a.fecha_servicio || a.fecha_solicitud).getTime() - new Date(b.fecha_servicio || b.fecha_solicitud).getTime();
   });
+  const municipalities = [...new Set(availableRequests
+    .filter(request => !selectedDepartamento || request.departamento === selectedDepartamento)
+    .map(request => request.municipio)
+    .filter(Boolean))].sort();
 
   return (
-    <div className="min-h-screen bg-[#FAF8F5]">
+    <div className="min-h-screen bg-[#EAE6F5]">
       {/* Header */}
-      <header className="bg-[#685AA1] shadow-sm">
+      <header className="bg-[#403460] shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <h1 className="text-2xl text-white">Chambly</h1>
           <button
             onClick={() => setMenuOpen(true)}
-            className="p-2 hover:bg-[#685AA1]/80 rounded-lg transition-colors text-white"
+            className="p-2 hover:bg-white/15 rounded-lg transition-colors text-white"
           >
             <Menu size={24} />
           </button>
@@ -197,17 +193,19 @@ export function ProfessionalDashboard({ userName, userData, userCategories, onLo
         onShowTutorial={onShowTutorial}
         roleHistory={roleHistory}
         onToggleMode={onToggleMode}
+        notificationCount={notificationCount}
       />
 
       <div className="max-w-7xl mx-auto px-4 py-8 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {/* Welcome Section */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
-          <h2 className="text-3xl mb-2">¡Bienvenido, {userName}!</h2>
-          <p className="text-gray-600">Tienes {filteredRequests.length} solicitudes nuevas de trabajo</p>
+        <div className="bg-gradient-to-r from-[#403460] via-[#51437F] to-[#685AA1] border border-[#685AA1] rounded-xl shadow-lg p-6 mb-8 text-white">
+          <p className="text-sm font-semibold uppercase tracking-wider text-[#E6DFFF]">Espacio profesional</p>
+          <h2 className="text-3xl mb-2 mt-1">¡Bienvenido, {userName}!</h2>
+          <p className="text-white/90">Tienes {filteredRequests.length} solicitudes nuevas de trabajo</p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <span className="text-sm text-gray-600">Tus categorías:</span>
+            <span className="text-sm text-white/90 self-center">Tus categorías:</span>
             {userCategories.map(cat => (
-              <span key={cat} className={`px-3 py-1 ${getCategoryColor(cat)} rounded-full text-sm font-medium`}>
+              <span key={cat} className="px-3 py-1 bg-white/15 border border-white/30 text-white rounded-full text-sm font-medium">
                 {cat}
               </span>
             ))}
@@ -215,26 +213,47 @@ export function ProfessionalDashboard({ userName, userData, userCategories, onLo
         </div>
 
         {/* Filter Section */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div className="bg-[#F8F6FC] border border-[#C8C0DF] rounded-xl shadow-sm p-6 mb-6">
           <div className="flex items-center gap-4">
-            <Filter size={20} className="text-gray-600" />
-            <div className="flex-1">
-              <label className="block text-sm mb-2 text-gray-700">Filtrar por Departamento</label>
-              <select
-                value={selectedDepartamento}
-                onChange={(e) => setSelectedDepartamento(e.target.value)}
-                className="w-full max-w-md px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1] bg-white"
-              >
-                <option value="">Todos los Departamentos</option>
-                {departamentos.map(dept => (
-                  <option key={dept} value={dept}>{dept}</option>
-                ))}
-              </select>
+            <Filter size={20} className="text-[#51437F]" />
+            <div className="grid flex-1 gap-4 md:grid-cols-2">
+              <div>
+                <label className="block text-sm mb-2 text-[#51437F]">Filtrar por Departamento</label>
+                <select
+                  value={selectedDepartamento}
+                  onChange={(e) => {
+                    setSelectedDepartamento(e.target.value);
+                    setSelectedMunicipio('');
+                  }}
+                  className="w-full px-4 py-2 border border-[#C8C0DF] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1] bg-white"
+                >
+                  <option value="">Todos los Departamentos</option>
+                  {departamentos.map(dept => (
+                    <option key={dept} value={dept}>{dept}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm mb-2 text-[#51437F]">Filtrar por Municipio o zona</label>
+                <select
+                  value={selectedMunicipio}
+                  onChange={(e) => setSelectedMunicipio(e.target.value)}
+                  className="w-full px-4 py-2 border border-[#C8C0DF] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1] bg-white"
+                >
+                  <option value="">Todos los municipios</option>
+                  {municipalities.map(municipality => (
+                    <option key={municipality} value={municipality}>{municipality}</option>
+                  ))}
+                </select>
+              </div>
             </div>
-            {selectedDepartamento && (
+            {(selectedDepartamento || selectedMunicipio) && (
               <button
-                onClick={() => setSelectedDepartamento('')}
-                className="px-4 py-2 text-sm text-[#685AA1] hover:text-[#685AA1]/80"
+                onClick={() => {
+                  setSelectedDepartamento('');
+                  setSelectedMunicipio('');
+                }}
+                className="px-4 py-2 text-sm text-[#51437F] hover:text-[#685AA1]"
               >
                 Limpiar Filtro
               </button>
@@ -244,11 +263,11 @@ export function ProfessionalDashboard({ userName, userData, userCategories, onLo
 
         {/* Job Requests */}
         {filteredRequests.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+          <div className="bg-[#F8F6FC] border border-[#C8C0DF] rounded-xl shadow-sm p-12 text-center">
             <p className="text-gray-600 text-lg mb-2">No hay solicitudes disponibles</p>
             <p className="text-gray-500 text-sm">
-              {selectedDepartamento
-                ? `No hay solicitudes en ${selectedDepartamento} para tus categorías`
+              {selectedDepartamento || selectedMunicipio
+                ? `No hay solicitudes en la zona seleccionada para tus categorías`
                 : 'No hay solicitudes que coincidan con tus categorías de trabajo'
               }
             </p>
@@ -256,7 +275,7 @@ export function ProfessionalDashboard({ userName, userData, userCategories, onLo
         ) : (
           <div className="space-y-4">
             {filteredRequests.map((request) => (
-              <div key={request.id} className="bg-white rounded-xl shadow-sm p-6 hover:shadow-md transition-shadow">
+              <div key={request.id} className="bg-[#F8F6FC] border border-[#C8C0DF] border-l-8 border-l-[#685AA1] rounded-xl shadow-sm p-6 hover:shadow-lg hover:border-l-[#403460] transition-shadow">
                 <div className="flex gap-4">
                   {/* Client Photo */}
                   <ImageWithFallback
@@ -270,7 +289,7 @@ export function ProfessionalDashboard({ userName, userData, userCategories, onLo
                     <div className="flex items-start justify-between mb-2">
                       <div>
                         <h3 className="text-xl font-medium text-[#1D1D1B]">{request.clientName}</h3>
-                        <p className="text-[#685AA1] font-medium">{request.jobType}</p>
+                        <p className="text-[#51437F] font-medium">{request.jobType}</p>
                       </div>
                       <div className="text-right">
                         <p className="text-xl font-medium text-green-600">{request.budget}</p>
@@ -307,7 +326,7 @@ export function ProfessionalDashboard({ userName, userData, userCategories, onLo
                     <div className="flex gap-3">
                       <button
                         onClick={() => handleAcceptRequest(request)}
-                        className="flex-1 px-6 py-2 bg-[#FFC900] text-[#1D1D1B] font-medium rounded-lg hover:bg-[#e6b500] transition-colors"
+                        className="flex-1 px-6 py-2 bg-[#685AA1] text-white font-medium rounded-lg hover:bg-[#51437F] transition-colors"
                       >
                         Aceptar
                       </button>
@@ -320,7 +339,7 @@ export function ProfessionalDashboard({ userName, userData, userCategories, onLo
                       </button>
                       <button
                         onClick={() => handleViewClient(request)}
-                        className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-[#D3CFED] transition-colors text-[#1D1D1B]"
+                        className="px-6 py-2 border border-[#C8C0DF] rounded-lg hover:bg-[#EAE6F5] transition-colors text-[#51437F]"
                       >
                         Ver Cliente
                       </button>

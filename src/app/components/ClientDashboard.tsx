@@ -10,6 +10,7 @@ interface ClientDashboardProps {
   onShowTutorial?: () => void;
   onToggleMode?: () => void;
   roleHistory?: {date: string; from: string; to: string}[];
+  notificationCount?: number;
 }
 
 const jobCategories = [
@@ -23,7 +24,7 @@ const jobCategories = [
   { id: 8, name: 'Ensamblaje de Muebles', icon: Sofa, color: 'bg-[#E8EAF6] text-[#1D1D1B]' },
 ];
 
-export function ClientDashboard({ userName, userData, onLogout, onNavigate, onShowTutorial, onToggleMode, roleHistory }: ClientDashboardProps) {
+export function ClientDashboard({ userName, userData, onLogout, onNavigate, onShowTutorial, onToggleMode, roleHistory, notificationCount = 0 }: ClientDashboardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const lastActivity = {
@@ -72,6 +73,7 @@ export function ClientDashboard({ userName, userData, onLogout, onNavigate, onSh
         onShowTutorial={onShowTutorial}
         roleHistory={roleHistory}
         onToggleMode={onToggleMode}
+        notificationCount={notificationCount}
       />
 
       <div className="max-w-7xl mx-auto px-4 py-8 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">

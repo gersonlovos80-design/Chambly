@@ -1,4 +1,4 @@
-import { X, Plus, Trash2, Receipt, Banknote, CreditCard, Calendar } from 'lucide-react';
+import { X, Plus, Trash2, Receipt, Calendar } from 'lucide-react';
 import { useState } from 'react';
 
 interface InvoiceItem {
@@ -13,17 +13,18 @@ interface InvoiceModalProps {
   onClose: () => void;
   clientName: string;
   jobType: string;
-  onSendInvoice: (items: InvoiceItem[], total: number, expirationDate: string, paymentMethod: 'efectivo' | 'tarjeta') => void;
-  requestedPaymentMethod?: 'efectivo' | 'tarjeta';
+  onSendInvoice: (items: InvoiceItem[], deliveryMode: 'al_finalizar' | 'fecha', scheduledDate: string) => Promise<void>;
 }
 
-export function InvoiceModal({ isOpen, onClose, clientName, jobType, onSendInvoice, requestedPaymentMethod }: InvoiceModalProps) {
+export function InvoiceModal({ isOpen, onClose, clientName, jobType, onSendInvoice }: InvoiceModalProps) {
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [newItemDescription, setNewItemDescription] = useState('');
   const [newItemAmount, setNewItemAmount] = useState('');
   const [newItemType, setNewItemType] = useState<'material' | 'labor'>('labor');
-  const [expirationDate, setExpirationDate] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'tarjeta'>(requestedPaymentMethod || 'efectivo');
+  const [deliveryMode, setDeliveryMode] = useState<'al_finalizar' | 'fecha'>('al_finalizar');
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [submitError, setSubmitError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   if (!isOpen) return null;
 
@@ -57,37 +58,38 @@ export function InvoiceModal({ isOpen, onClose, clientName, jobType, onSendInvoi
 
   const total = items.reduce((sum, item) => sum + item.amount, 0);
 
-  const handleSendInvoice = () => {
+  const handleSendInvoice = async () => {
     if (items.length === 0) {
       alert('Por favor agrega al menos un elemento al cobro');
       return;
     }
 
-    if (!expirationDate) {
-      alert('Por favor selecciona una fecha de expiración');
+    if (deliveryMode === 'fecha' && !scheduledDate) {
+      alert('Selecciona la fecha en que se enviará el presupuesto');
+      return;
+    }
+    if (deliveryMode === 'fecha' && scheduledDate < new Date().toISOString().split('T')[0]) {
+      alert('La fecha de envío debe ser hoy o posterior');
       return;
     }
 
-    // Validate expiration date is in the future
-    const expDate = new Date(expirationDate);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    setSubmitError('');
+    setSaving(true);
+    try {
+      await onSendInvoice(items, deliveryMode, deliveryMode === 'fecha' ? scheduledDate : '');
+      onClose();
 
-    if (expDate < today) {
-      alert('La fecha de expiración debe ser posterior a hoy');
-      return;
+      setItems([]);
+      setNewItemDescription('');
+      setNewItemAmount('');
+      setNewItemType('labor');
+      setDeliveryMode('al_finalizar');
+      setScheduledDate('');
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'No se pudo enviar el presupuesto');
+    } finally {
+      setSaving(false);
     }
-
-    onSendInvoice(items, total, expirationDate, paymentMethod);
-    onClose();
-
-    // Reset form
-    setItems([]);
-    setNewItemDescription('');
-    setNewItemAmount('');
-    setNewItemType('labor');
-    setExpirationDate('');
-    setPaymentMethod(requestedPaymentMethod || 'efectivo');
   };
 
   const materialsTotal = items.filter(i => i.type === 'material').reduce((sum, i) => sum + i.amount, 0);
@@ -124,65 +126,61 @@ export function InvoiceModal({ isOpen, onClose, clientName, jobType, onSendInvoi
             <p className="text-sm text-gray-600">Servicio: <span className="font-medium text-[#1D1D1B]">{jobType}</span></p>
           </div>
 
-          {/* Payment Method Selection */}
+          {/* Quote delivery */}
           <div className="mb-6">
             <label className="block text-sm font-medium text-[#1D1D1B] mb-3">
-              Método de Pago del Cliente
+              ¿Cuándo enviar el presupuesto?
             </label>
             <div className="grid grid-cols-2 gap-4">
               <button
                 type="button"
-                onClick={() => setPaymentMethod('efectivo')}
+                onClick={() => setDeliveryMode('al_finalizar')}
                 className={`p-4 border-2 rounded-xl transition-all ${
-                  paymentMethod === 'efectivo'
+                  deliveryMode === 'al_finalizar'
                     ? 'border-[#FFC900] bg-[#FFC900]/10'
                     : 'border-gray-300 hover:border-gray-400'
                 }`}
               >
-                <Banknote size={28} className={paymentMethod === 'efectivo' ? 'text-[#FFC900] mx-auto mb-2' : 'text-gray-600 mx-auto mb-2'} />
-                <p className="text-sm font-medium text-[#1D1D1B]">Efectivo</p>
-                <p className="text-xs text-gray-600 mt-1">Marcarás como pagado manualmente</p>
+                <Receipt size={28} className={deliveryMode === 'al_finalizar' ? 'text-[#FFC900] mx-auto mb-2' : 'text-gray-600 mx-auto mb-2'} />
+                <p className="text-sm font-medium text-[#1D1D1B]">Al finalizar</p>
+                <p className="text-xs text-gray-600 mt-1">Se enviará cuando completes el servicio</p>
               </button>
 
               <button
                 type="button"
-                onClick={() => setPaymentMethod('tarjeta')}
+                onClick={() => setDeliveryMode('fecha')}
                 className={`p-4 border-2 rounded-xl transition-all ${
-                  paymentMethod === 'tarjeta'
+                  deliveryMode === 'fecha'
                     ? 'border-[#FFC900] bg-[#FFC900]/10'
                     : 'border-gray-300 hover:border-gray-400'
                 }`}
               >
-                <CreditCard size={28} className={paymentMethod === 'tarjeta' ? 'text-[#FFC900] mx-auto mb-2' : 'text-gray-600 mx-auto mb-2'} />
-                <p className="text-sm font-medium text-[#1D1D1B]">Tarjeta</p>
-                <p className="text-xs text-gray-600 mt-1">Cliente paga automáticamente</p>
+                <Calendar size={28} className={deliveryMode === 'fecha' ? 'text-[#FFC900] mx-auto mb-2' : 'text-gray-600 mx-auto mb-2'} />
+                <p className="text-sm font-medium text-[#1D1D1B]">En fecha exacta</p>
+                <p className="text-xs text-gray-600 mt-1">Se enviará automáticamente ese día</p>
               </button>
             </div>
           </div>
 
-          {/* Expiration Date */}
-          <div className="mb-6">
+          {deliveryMode === 'fecha' && <div className="mb-6">
             <label className="block text-sm font-medium text-[#1D1D1B] mb-2">
-              Fecha de Expiración del Cobro
+              Fecha de envío del presupuesto
             </label>
             <div className="relative">
               <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
               <input
                 type="date"
-                value={expirationDate}
-                onChange={(e) => setExpirationDate(e.target.value)}
-                min={new Date(Date.now() + 86400000).toISOString().split('T')[0]}
+                value={scheduledDate}
+                onChange={(e) => setScheduledDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
                 className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1]"
                 required
               />
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              {paymentMethod === 'tarjeta'
-                ? 'Si el cliente no paga antes de esta fecha, el cobro se marcará como No Pagado'
-                : 'Fecha límite para que el cliente realice el pago en efectivo'
-              }
+              El cliente recibirá este presupuesto en el chat ese día.
             </p>
-          </div>
+          </div>}
 
           {/* Add Item Form */}
           <div className="bg-white border-2 border-gray-200 rounded-xl p-6 mb-6">
@@ -324,6 +322,7 @@ export function InvoiceModal({ isOpen, onClose, clientName, jobType, onSendInvoi
           )}
 
           {/* Actions */}
+          {submitError && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{submitError}</p>}
           <div className="flex gap-4">
             <button
               onClick={onClose}
@@ -333,11 +332,11 @@ export function InvoiceModal({ isOpen, onClose, clientName, jobType, onSendInvoi
             </button>
             <button
               onClick={handleSendInvoice}
-              disabled={items.length === 0}
+              disabled={items.length === 0 || saving}
               className="flex-1 px-6 py-3 bg-[#FFC900] text-[#1D1D1B] font-medium rounded-lg hover:bg-[#e6b500] transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <Receipt size={20} />
-              Enviar Cobro al Cliente
+              {saving ? 'Enviando...' : 'Enviar presupuesto al chat'}
             </button>
           </div>
         </div>
