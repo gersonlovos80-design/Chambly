@@ -1,0 +1,6 @@
+projectKey=Chambly
+serverUrl=http://localhost:9000
+serverVersion=26.9.0.129388
+dashboardUrl=http://localhost:9000/dashboard?id=Chambly
+ceTaskId=2000954f-2da8-4913-89f4-11c5b419e116
+ceTaskUrl=http://localhost:9000/api/ce/task?id=2000954f-2da8-4913-89f4-11c5b419e116

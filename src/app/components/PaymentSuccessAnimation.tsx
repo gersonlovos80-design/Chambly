@@ -21,10 +21,11 @@ export function PaymentSuccessAnimation({
       // Generate confetti particles
       const particles = Array.from({ length: 30 }, (_, i) => ({
         id: i,
-        left: Math.random() * 100,
-        delay: Math.random() * 0.5
+        left: (crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32) * 100,
+        delay: (crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32) * 0.5
       }));
       setConfetti(particles);
+      rean
 
       // Auto close after 3 seconds
       const timer = setTimeout(() => {
