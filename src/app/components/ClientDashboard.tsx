@@ -5,6 +5,8 @@ import { MenuSidebar } from './MenuSidebar';
 interface ClientDashboardProps {
   userName: string;
   userData: any;
+  latestActivity: any | null;
+  onViewActivity: (request: any) => void;
   onLogout: () => void;
   onNavigate: (section: string) => void;
   onShowTutorial?: () => void;
@@ -24,29 +26,17 @@ const jobCategories = [
   { id: 8, name: 'Ensamblaje de Muebles', icon: Sofa, color: 'bg-[#E8EAF6] text-[#1D1D1B]' },
 ];
 
-export function ClientDashboard({ userName, userData, onLogout, onNavigate, onShowTutorial, onToggleMode, roleHistory, notificationCount = 0 }: ClientDashboardProps) {
+export function ClientDashboard({ userName, userData, latestActivity, onViewActivity, onLogout, onNavigate, onShowTutorial, onToggleMode, roleHistory, notificationCount = 0 }: ClientDashboardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-
-  const lastActivity = {
-    professionalName: 'María Rodríguez',
-    jobType: 'Limpieza',
-    category: 'Limpieza Profunda de Casa',
-    icon: Droplets,
-    professionalData: {
-      name: 'María',
-      lastName: 'Rodríguez',
-      photo: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop',
-      departamento: 'San Salvador',
-      categories: ['Limpieza', 'Jardinería'],
-      yearsExperience: 5
-    },
-    requestData: {
-      jobType: 'Limpieza',
-      description: 'Limpieza Profunda de Casa - 3 habitaciones, cocina y 2 baños. Productos incluidos.',
-      date: '15 de Marzo, 2026',
-      budget: '$150'
-    }
-  };
+  const activityCategory = jobCategories.find(category => category.name === latestActivity?.categoria);
+  const ActivityIcon = activityCategory?.icon || Droplets;
+  const activityStatus = latestActivity?.estado === 'completada'
+    ? 'Servicio completado'
+    : latestActivity?.estado === 'aceptada' || latestActivity?.estado === 'en_proceso'
+      ? 'Solicitud aceptada'
+      : latestActivity?.estado === 'rechazada'
+        ? 'Solicitud rechazada'
+        : 'Solicitud pendiente';
 
   return (
     <div className="min-h-screen bg-[#FAF8F5]">
@@ -86,22 +76,33 @@ export function ClientDashboard({ userName, userData, onLogout, onNavigate, onSh
         {/* Last Activity */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
           <h3 className="text-xl mb-4 text-[#1D1D1B]">Última Actividad</h3>
-          <div className="flex items-center gap-4 p-4 bg-[#D3CFED] rounded-lg">
-            <div className={`p-3 rounded-full ${jobCategories.find(c => c.name === lastActivity.jobType)?.color}`}>
-              <lastActivity.icon size={24} />
+          {latestActivity ? (
+            <div className="flex flex-wrap items-center gap-4 rounded-lg bg-[#D3CFED] p-4">
+              <div className={`rounded-full p-3 ${activityCategory?.color || 'bg-white text-[#1D1D1B]'}`}>
+                <ActivityIcon size={24} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-gray-600">{activityStatus}</p>
+                <p className="font-medium text-[#1D1D1B]">
+                  {latestActivity.profesional_nombre} {latestActivity.profesional_apellido}
+                </p>
+                <p className="text-sm text-gray-600">{latestActivity.categoria || 'Servicio'}</p>
+                <p className="text-xs text-gray-600">
+                  {[latestActivity.municipio, latestActivity.departamento].filter(Boolean).join(', ')}
+                </p>
+              </div>
+              <button
+                onClick={() => onViewActivity(latestActivity)}
+                className="rounded-lg bg-[#FFC900] px-4 py-2 font-medium text-[#1D1D1B] transition-colors hover:bg-[#e6b500]"
+              >
+                Ver Detalles
+              </button>
             </div>
-            <div className="flex-1">
-              <p className="text-sm text-gray-600">Solicitaste a</p>
-              <p className="font-medium text-[#1D1D1B]">{lastActivity.professionalName}</p>
-              <p className="text-sm text-gray-600">{lastActivity.category}</p>
-            </div>
-            <button
-              onClick={() => onNavigate('request-details')}
-              className="px-4 py-2 bg-[#FFC900] text-[#1D1D1B] font-medium rounded-lg hover:bg-[#e6b500] transition-colors"
-            >
-              Ver Detalles
-            </button>
-          </div>
+          ) : (
+            <p className="rounded-lg bg-[#FAF8F5] p-4 text-sm text-gray-600">
+              Aún no tienes solicitudes de servicio.
+            </p>
+          )}
         </div>
 
         {/* Job Categories Gallery */}

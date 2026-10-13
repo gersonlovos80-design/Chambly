@@ -1,4 +1,4 @@
-import { ArrowLeft, Banknote, CreditCard, Filter, Calendar, DollarSign, AlertCircle, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { ArrowLeft, Banknote, CreditCard, Filter, Calendar, DollarSign, CheckCircle, Clock } from 'lucide-react';
 import { useState } from 'react';
 
 interface Transaction {
@@ -11,7 +11,7 @@ interface Transaction {
   serviceName: string;
   amount: number;
   paymentMethod: 'efectivo' | 'tarjeta';
-  paymentStatus: 'pendiente' | 'completado' | 'en_disputa' | 'no_pagado';
+  paymentStatus: 'pendiente' | 'completado';
   date: string;
   description: string;
 }
@@ -19,14 +19,15 @@ interface Transaction {
 interface PaymentHistoryProps {
   onBack: () => void;
   transactions: Transaction[];
+  userType: 'client' | 'professional';
+  isLoading: boolean;
+  error: string;
 }
 
 const getStatusColor = (status: string) => {
   const colors = {
     'completado': 'bg-green-100 text-green-700',
-    'pendiente': 'bg-yellow-100 text-yellow-700',
-    'en_disputa': 'bg-orange-100 text-orange-700',
-    'no_pagado': 'bg-red-100 text-red-700'
+    'pendiente': 'bg-yellow-100 text-yellow-700'
   };
   return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-700';
 };
@@ -37,26 +38,17 @@ const getStatusIcon = (status: string) => {
       return <CheckCircle size={16} />;
     case 'pendiente':
       return <Clock size={16} />;
-    case 'en_disputa':
-      return <AlertCircle size={16} />;
-    case 'no_pagado':
-      return <XCircle size={16} />;
     default:
       return <Clock size={16} />;
   }
 };
 
 const getStatusText = (status: string) => {
-  const texts = {
-    'completado': 'Completado',
-    'pendiente': 'Pendiente',
-    'en_disputa': 'En Disputa',
-    'no_pagado': 'No Pagado'
-  };
+  const texts = { 'completado': 'Completado', 'pendiente': 'Pendiente' };
   return texts[status as keyof typeof texts] || status;
 };
 
-export function PaymentHistory({ onBack, transactions }: PaymentHistoryProps) {
+export function PaymentHistory({ onBack, transactions, userType, isLoading, error }: PaymentHistoryProps) {
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   const filteredTransactions = statusFilter === 'all'
@@ -71,7 +63,6 @@ export function PaymentHistory({ onBack, transactions }: PaymentHistoryProps) {
     .filter(t => t.paymentStatus === 'pendiente')
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const unpaidCount = transactions.filter(t => t.paymentStatus === 'no_pagado').length;
 
   return (
     <div className="min-h-screen bg-[#FAF8F5]">
@@ -89,36 +80,20 @@ export function PaymentHistory({ onBack, transactions }: PaymentHistoryProps) {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 py-8 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-        {/* Title and Payout Card */}
-        <div className="mb-6 flex items-start justify-between gap-6">
-          <div>
-            <h1 className="text-3xl mb-2 text-[#1D1D1B]">Historial de Pagos</h1>
-            <p className="text-gray-600">Gestiona todas tus transacciones de servicios</p>
-          </div>
-
-          {/* Payout Card Info */}
-          <div className="bg-gradient-to-br from-[#685AA1] to-[#8b7bb8] rounded-xl p-4 text-white min-w-[240px] shadow-lg">
-            <div className="flex items-center gap-2 mb-2">
-              <CreditCard size={20} className="text-[#FFC900]" />
-              <p className="text-xs text-white/70">TARJETA DE COBRO</p>
-            </div>
-            <p className="text-lg font-mono tracking-wider mb-1">•••• •••• •••• 5678</p>
-            <p className="text-xs text-white/90">Cuenta Principal</p>
-            <p className="text-xs text-white/60 mt-2 border-t border-white/20 pt-2">
-              *Se deduce 15% de comisión mensual por uso de la plataforma
-            </p>
-          </div>
+        <div className="mb-6">
+          <h1 className="text-3xl mb-2 text-[#1D1D1B]">Historial de Pagos</h1>
+          <p className="text-gray-600">Consulta los pagos de tus servicios</p>
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-2">
           <div className="bg-white rounded-xl shadow-sm p-6">
             <div className="flex items-center gap-3 mb-2">
               <div className="p-2 bg-green-100 rounded-lg">
                 <DollarSign size={24} className="text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-gray-600">Total Ganado</p>
+                <p className="text-sm text-gray-600">{userType === 'professional' ? 'Total recibido' : 'Total pagado'}</p>
                 <p className="text-2xl font-medium text-green-600">${totalEarned.toFixed(2)}</p>
               </div>
             </div>
@@ -136,17 +111,6 @@ export function PaymentHistory({ onBack, transactions }: PaymentHistoryProps) {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-red-100 rounded-lg">
-                <AlertCircle size={24} className="text-red-600" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">No Pagados</p>
-                <p className="text-2xl font-medium text-red-600">{unpaidCount}</p>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Filter Section */}
@@ -163,8 +127,6 @@ export function PaymentHistory({ onBack, transactions }: PaymentHistoryProps) {
                 <option value="all">Todos los Estados</option>
                 <option value="completado">Completado</option>
                 <option value="pendiente">Pendiente</option>
-                <option value="en_disputa">En Disputa</option>
-                <option value="no_pagado">No Pagado</option>
               </select>
             </div>
           </div>
@@ -172,7 +134,13 @@ export function PaymentHistory({ onBack, transactions }: PaymentHistoryProps) {
 
         {/* Transactions List */}
         <div className="space-y-4">
-          {filteredTransactions.length === 0 ? (
+          {error ? (
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-700">
+              No se pudo cargar el historial de pagos: {error}
+            </div>
+          ) : isLoading ? (
+            <div className="rounded-xl bg-white p-12 text-center text-gray-600">Cargando historial de pagos...</div>
+          ) : filteredTransactions.length === 0 ? (
             <div className="bg-white rounded-xl shadow-sm p-12 text-center">
               <DollarSign size={64} className="mx-auto mb-4 text-gray-300" />
               <h3 className="text-xl font-medium text-gray-600 mb-2">
@@ -214,7 +182,7 @@ export function PaymentHistory({ onBack, transactions }: PaymentHistoryProps) {
                             {transaction.serviceName}
                           </h3>
                           <p className="text-sm text-gray-600">
-                            Cliente: {transaction.clientName}
+                            {userType === 'professional' ? 'Cliente' : 'Profesional'}: {transaction.clientName}
                           </p>
                         </div>
                         <div className="text-right">
@@ -247,13 +215,6 @@ export function PaymentHistory({ onBack, transactions }: PaymentHistoryProps) {
                 </div>
 
                 {/* Action for unpaid transactions */}
-                {transaction.paymentStatus === 'no_pagado' && (
-                  <div className="mt-4 pt-4 border-t">
-                    <button className="text-sm text-red-600 hover:text-red-700 font-medium">
-                      Reportar Problema de Pago →
-                    </button>
-                  </div>
-                )}
               </div>
             ))
           )}

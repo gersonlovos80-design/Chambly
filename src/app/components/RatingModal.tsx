@@ -4,7 +4,7 @@ import { useState } from 'react';
 interface RatingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (rating: number, comment: string) => void;
+  onSubmit: (rating: number, comment: string) => Promise<void>;
   targetName: string;
   userType: 'client' | 'professional';
 }
@@ -14,10 +14,12 @@ export function RatingModal({ isOpen, onClose, onSubmit, targetName, userType }:
   const [hoveredRating, setHoveredRating] = useState(0);
   const [comment, setComment] = useState('');
   const [validationError, setValidationError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
     if (rating === 0) {
       setValidationError('Selecciona de 1 a 5 estrellas.');
       return;
@@ -26,11 +28,18 @@ export function RatingModal({ isOpen, onClose, onSubmit, targetName, userType }:
       setValidationError('Escribe un comentario de al menos 20 caracteres.');
       return;
     }
-    onSubmit(rating, comment.trim());
-    onClose();
-    setRating(0);
-    setComment('');
+    setIsSubmitting(true);
     setValidationError('');
+    try {
+      await onSubmit(rating, comment.trim());
+      onClose();
+      setRating(0);
+      setComment('');
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : 'No se pudo guardar la reseña. Intenta de nuevo.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -130,10 +139,11 @@ export function RatingModal({ isOpen, onClose, onSubmit, targetName, userType }:
             Cancelar
           </button>
           <button
-            onClick={handleSubmit}
+            onClick={() => void handleSubmit()}
+            disabled={isSubmitting}
             className="flex-1 px-6 py-3 bg-[#FFC900] text-[#1D1D1B] font-medium rounded-lg hover:bg-[#e6b500] transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
-            Enviar Calificación
+            {isSubmitting ? 'Guardando...' : 'Enviar Calificación'}
           </button>
         </div>
       </div>

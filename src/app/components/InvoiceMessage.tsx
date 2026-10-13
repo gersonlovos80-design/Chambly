@@ -1,4 +1,5 @@
 import { Receipt, CreditCard, Banknote, Calendar, CheckCircle, XCircle } from 'lucide-react';
+import { useState } from 'react';
 
 interface InvoiceItem {
   id: string;
@@ -19,7 +20,9 @@ interface InvoiceMessageProps {
   deliveryMode?: 'al_finalizar' | 'fecha';
   scheduledDate?: string | null;
   paymentMethod: 'efectivo' | 'tarjeta';
+  paymentStatus?: 'pendiente' | 'completado' | null;
   onRespond?: (decision: 'aceptada' | 'rechazada') => void;
+  onConfirmCashPayment?: () => Promise<void>;
 }
 
 export function InvoiceMessage({
@@ -34,10 +37,22 @@ export function InvoiceMessage({
   deliveryMode,
   scheduledDate,
   paymentMethod,
-  onRespond
+  paymentStatus,
+  onRespond,
+  onConfirmCashPayment
 }: InvoiceMessageProps) {
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
   const materialsTotal = items.filter(i => i.type === 'material').reduce((sum, i) => sum + i.amount, 0);
   const laborTotal = items.filter(i => i.type === 'labor').reduce((sum, i) => sum + i.amount, 0);
+  const confirmCashPayment = async () => {
+    if (!onConfirmCashPayment) return;
+    setConfirmingPayment(true);
+    try {
+      await onConfirmCashPayment();
+    } finally {
+      setConfirmingPayment(false);
+    }
+  };
 
   return (
     <div className="max-w-md mx-auto my-4">
@@ -140,6 +155,31 @@ export function InvoiceMessage({
                 <CheckCircle size={18} />
                 <p className="text-sm font-medium">Presupuesto aceptado por el cliente</p>
               </div>
+              {paymentStatus === 'completado' ? (
+                <p className="mt-2 text-sm text-green-700">Pago confirmado.</p>
+              ) : paymentMethod === 'tarjeta' ? (
+                <p className="mt-2 text-sm text-yellow-800">
+                  Pago pendiente. El cobro con tarjeta todavía no está integrado.
+                </p>
+              ) : (
+                <div className="mt-3">
+                  <p className="text-sm text-yellow-800">
+                    {onConfirmCashPayment
+                      ? 'Confirma únicamente después de recibir el efectivo y de que el servicio esté completado.'
+                      : 'El pago en efectivo sigue pendiente de confirmación del cliente.'}
+                  </p>
+                  {onConfirmCashPayment && (
+                    <button
+                      type="button"
+                      disabled={confirmingPayment}
+                      onClick={() => void confirmCashPayment()}
+                      className="mt-3 rounded-lg bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {confirmingPayment ? 'Confirmando...' : 'Confirmar pago en efectivo'}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           ) : status === 'rechazada' ? (
             <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4">

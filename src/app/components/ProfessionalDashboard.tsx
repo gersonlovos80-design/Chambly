@@ -163,10 +163,11 @@ export function ProfessionalDashboard({ userName, userData, userCategories, onLo
   const filteredRequests = [...departamentoFiltered].sort((a, b) => {
     return new Date(a.fecha_servicio || a.fecha_solicitud).getTime() - new Date(b.fecha_servicio || b.fecha_solicitud).getTime();
   });
-  const municipalities = [...new Set(availableRequests
+  const municipalities = [...new Set(serviceRequests
+    .filter(request => userCategories.includes(request.categoria))
     .filter(request => !selectedDepartamento || request.departamento === selectedDepartamento)
-    .map(request => request.municipio)
-    .filter(Boolean))].sort();
+    .map(request => String(request.municipio || '').trim())
+    .filter(Boolean))].sort((first, second) => first.localeCompare(second, 'es'));
 
   return (
     <div className="min-h-screen bg-[#EAE6F5]">

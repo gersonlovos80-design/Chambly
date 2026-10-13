@@ -1,13 +1,14 @@
 import { ArrowLeft, MapPin, Star, Calendar, DollarSign } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { useState } from 'react';
-import { RequestServiceModal } from './RequestServiceModal';
+import { RequestServiceModal, type ServiceRequestPayload } from './RequestServiceModal';
 
 interface RequestDetailsProps {
   onBack: () => void;
   professionalData: any;
   requestData: any;
   clientData: any;
+  onSendRequest: (payload: ServiceRequestPayload) => Promise<void>;
 }
 
 const getCategoryColor = (category: string): string => {
@@ -24,9 +25,16 @@ const getCategoryColor = (category: string): string => {
   return colors[category] || 'bg-[#D3CFED] text-[#685AA1]';
 };
 
-export function RequestDetails({ onBack, professionalData, requestData, clientData }: RequestDetailsProps) {
+export function RequestDetails({ onBack, professionalData, requestData, clientData, onSendRequest }: RequestDetailsProps) {
   const [showRequestModal, setShowRequestModal] = useState(false);
-  const rating = 4.8;
+  const rating = Number(professionalData.rating) || 0;
+  const statusLabels: Record<string, string> = {
+    pendiente: 'Pendiente',
+    aceptada: 'Aceptada',
+    en_proceso: 'En proceso',
+    completada: 'Completada',
+    rechazada: 'Rechazada'
+  };
 
   return (
     <div className="min-h-screen bg-[#FAF8F5]">
@@ -73,6 +81,7 @@ export function RequestDetails({ onBack, professionalData, requestData, clientDa
             <div className="flex items-center gap-2 text-gray-600 mb-3">
               <MapPin size={18} />
               <span>{professionalData.departamento}</span>
+              {professionalData.municipio && <span>· {professionalData.municipio}</span>}
             </div>
 
             {/* Rating */}
@@ -82,12 +91,12 @@ export function RequestDetails({ onBack, professionalData, requestData, clientDa
                   <Star
                     key={i}
                     size={20}
-                    className={i < Math.floor(rating) ? 'fill-[#FFC900] text-[#FFC900]' : 'text-gray-300'}
+                    className={i < Math.round(rating) ? 'fill-[#FFC900] text-[#FFC900]' : 'text-gray-300'}
                   />
                 ))}
               </div>
               <span className="text-lg font-medium">{rating}</span>
-              <span className="text-gray-600">(32 reseñas)</span>
+              <span className="text-gray-600">({Number(professionalData.reviewCount) || 0} reseñas)</span>
             </div>
 
             {/* Categories */}
@@ -131,7 +140,7 @@ export function RequestDetails({ onBack, professionalData, requestData, clientDa
                 <h3 className="font-medium text-[#1D1D1B] mb-2">Fecha Solicitada</h3>
                 <div className="flex items-center gap-2 text-gray-700">
                   <Calendar size={18} />
-                  <span>{requestData.date}</span>
+                  <span>{new Date(`${requestData.date}T00:00:00`).toLocaleDateString('es-SV')}</span>
                 </div>
               </div>
             )}
@@ -142,7 +151,7 @@ export function RequestDetails({ onBack, professionalData, requestData, clientDa
                 <h3 className="font-medium text-[#1D1D1B] mb-2">Presupuesto</h3>
                 <div className="flex items-center gap-2 text-green-600 font-medium">
                   <DollarSign size={18} />
-                  <span>{requestData.budget}</span>
+                  <span>${Number(requestData.budget).toFixed(2)}</span>
                 </div>
               </div>
             )}
@@ -150,8 +159,10 @@ export function RequestDetails({ onBack, professionalData, requestData, clientDa
             {/* Status */}
             <div>
               <h3 className="font-medium text-[#1D1D1B] mb-2">Estado</h3>
-              <span className="inline-block px-4 py-2 bg-green-100 text-green-700 font-medium rounded-lg">
-                Completado
+              <span className={`inline-block rounded-lg px-4 py-2 font-medium ${
+                requestData.status === 'completada' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+              }`}>
+                {statusLabels[requestData.status] || 'Pendiente'}
               </span>
             </div>
           </div>
@@ -178,7 +189,9 @@ export function RequestDetails({ onBack, professionalData, requestData, clientDa
         onClose={() => setShowRequestModal(false)}
         clientData={clientData}
         professionalName={`${professionalData.name}${professionalData.lastName ? ' ' + professionalData.lastName : ''}`}
+        professionalId={String(professionalData.id)}
         category={requestData.jobType}
+        onSendRequest={onSendRequest}
       />
     </div>
   );

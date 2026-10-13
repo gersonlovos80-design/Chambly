@@ -16,8 +16,6 @@ import { ReviewsScreen } from './components/ReviewsScreen';
 import { ClientReviewsScreen } from './components/ClientReviewsScreen';
 import { ActiveJobs } from './components/ActiveJobs';
 import { PaymentHistory } from './components/PaymentHistory';
-import { PaymentModal } from './components/PaymentModal';
-import { PaymentSuccessAnimation } from './components/PaymentSuccessAnimation';
 import { TutorialOverlay } from './components/TutorialOverlay';
 import { PaymentMethods } from './components/PaymentMethods';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -32,11 +30,13 @@ import {
   marcarNotificacionLeida,
   obtenerConversaciones,
   obtenerNotificaciones,
+  obtenerPagos,
   obtenerResenas,
   obtenerPerfilesRol,
   obtenerSolicitudes,
   responderPresupuesto,
-  responderSolicitud
+  responderSolicitud,
+  confirmarPagoEfectivo
 } from '../services/api';
 import type { ServiceRequestPayload } from './components/RequestServiceModal';
 import { ProfessionalProfileRegistration } from './components/ProfessionalProfileRegistration';
@@ -108,35 +108,6 @@ export default function App() {
       setToastMessage(null);
     }, 3000);
   };
-
-  // Check for expired invoices periodically
-  useEffect(() => {
-    const checkExpiredInvoices = () => {
-      const now = new Date();
-
-      // Update expired transactions
-      setTransactions((prev: any)=> {
-        let hasChanges = false;
-        const updated = prev.map((trans:any) => {
-          if (trans.paymentStatus === 'pendiente' && trans.expirationDate) {
-            const expirationDate = new Date(trans.expirationDate);
-            if (expirationDate < now) {
-              hasChanges = true;
-              return { ...trans, paymentStatus: 'no_pagado' };
-            }
-          }
-          return trans;
-        });
-        return hasChanges ? updated : prev;
-      });
-    };
-
-    // Check immediately and then every minute
-    checkExpiredInvoices();
-    const interval = setInterval(checkExpiredInvoices, 60000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -274,119 +245,9 @@ export default function App() {
   const [serviceRequests, setServiceRequests] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
 
-  // Payment state
-  const [transactions, setTransactions] = useState<any[]>([
-    // Demo transaction 1 - Pending (Card)
-    {
-      id: 'trans-demo-1',
-      serviceId: 'demo-chat-1',
-      clientId: 'demo-chat-1',
-      clientName: 'María Rodríguez',
-      clientPhoto: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop',
-      professionalId: 'demo-professional',
-      serviceName: 'Limpieza',
-      amount: 175.00,
-      paymentMethod: 'tarjeta',
-      paymentStatus: 'pendiente',
-      date: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
-      description: 'Factura #demo-1 - Limpieza profunda de 3 habitaciones',
-      expirationDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      invoiceId: 'invoice-demo-1'
-    },
-    // Demo transaction 2 - Completed (Cash - Electricidad)
-    {
-      id: 'trans-demo-2',
-      serviceId: 'demo-chat-3',
-      clientId: 'demo-chat-3',
-      clientName: 'Roberto Silva',
-      clientPhoto: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop',
-      professionalId: 'demo-professional',
-      serviceName: 'Electricidad',
-      amount: 450.00,
-      paymentMethod: 'efectivo',
-      paymentStatus: 'completado',
-      date: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
-      description: 'Factura #demo-3 - Reparación eléctrica y cambio de tomacorrientes',
-      expirationDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      invoiceId: 'invoice-demo-3'
-    },
-    // Demo transaction 3 - Completed (Cash - Pintura)
-    {
-      id: 'trans-demo-3',
-      serviceId: 'demo-chat-2',
-      clientId: 'demo-chat-2',
-      clientName: 'Carlos Méndez',
-      clientPhoto: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&h=200&fit=crop',
-      professionalId: 'demo-professional',
-      serviceName: 'Pintura',
-      amount: 650.00,
-      paymentMethod: 'efectivo',
-      paymentStatus: 'completado',
-      date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
-      description: 'Factura #demo-2 - Pintura de 3 habitaciones',
-      expirationDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      invoiceId: 'invoice-demo-2'
-    },
-    // Demo transaction 4 - Completed (Card - Old)
-    {
-      id: 'trans-demo-4',
-      serviceId: 'service-old-1',
-      clientId: 'client-old-1',
-      clientName: 'Ana López',
-      clientPhoto: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&h=200&fit=crop',
-      professionalId: 'demo-professional',
-      serviceName: 'Limpieza',
-      amount: 220.00,
-      paymentMethod: 'tarjeta',
-      paymentStatus: 'completado',
-      date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
-      description: 'Limpieza semanal de oficina',
-      expirationDate: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      invoiceId: 'invoice-old-1'
-    },
-    // Demo transaction 5 - Completed (Cash - Old)
-    {
-      id: 'trans-demo-5',
-      serviceId: 'service-old-2',
-      clientId: 'client-old-2',
-      clientName: 'Patricia Flores',
-      clientPhoto: 'https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=200&h=200&fit=crop',
-      professionalId: 'demo-professional',
-      serviceName: 'Jardinería',
-      amount: 180.00,
-      paymentMethod: 'efectivo',
-      paymentStatus: 'completado',
-      date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
-      description: 'Mantenimiento de jardín y poda',
-      expirationDate: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      invoiceId: 'invoice-old-2'
-    },
-    // Demo transaction 6 - No Pagado (Expired)
-    {
-      id: 'trans-demo-6',
-      serviceId: 'service-old-3',
-      clientId: 'client-old-3',
-      clientName: 'Miguel Torres',
-      clientPhoto: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&h=200&fit=crop',
-      professionalId: 'demo-professional',
-      serviceName: 'Plomería',
-      amount: 320.00,
-      paymentMethod: 'tarjeta',
-      paymentStatus: 'no_pagado',
-      date: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
-      description: 'Reparación de tubería - Pago no completado',
-      expirationDate: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      invoiceId: 'invoice-old-3'
-    }
-  ]);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
-  const [pendingPayment, setPendingPayment] = useState<{
-    jobId: string;
-    clientName: string;
-    serviceName: string;
-    amount: number;
-  } | null>(null);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [paymentHistoryError, setPaymentHistoryError] = useState('');
+  const [isLoadingPaymentHistory, setIsLoadingPaymentHistory] = useState(false);
 
   // Saved cards state
   const [savedCards, setSavedCards] = useState<any[]>([
@@ -779,6 +640,49 @@ export default function App() {
     };
   }, [userData, userType]);
 
+  useEffect(() => {
+    if (currentScreen !== 'payment-history' || !userData || (userType !== 'client' && userType !== 'professional')) return;
+    let cancelled = false;
+    setIsLoadingPaymentHistory(true);
+    setPaymentHistoryError('');
+    obtenerPagos()
+      .then(result => {
+        if (cancelled) return;
+        setTransactions((result.pagos || []).map((payment: any) => ({
+          id: String(payment.id),
+          serviceId: String(payment.solicitud_id),
+          clientId: String(payment.cliente_id),
+          clientName: userType === 'professional'
+            ? payment.cliente_nombre
+            : payment.profesional_nombre,
+          clientPhoto: userType === 'professional'
+            ? payment.foto_cliente || ''
+            : payment.foto_profesional || '',
+          professionalId: String(payment.profesional_id),
+          serviceName: payment.categoria || payment.titulo,
+          amount: Number(payment.monto),
+          paymentMethod: payment.metodo,
+          paymentStatus: payment.estado,
+          date: new Date(String(payment.fecha_creacion).replace(' ', 'T')).toLocaleDateString('es-SV', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+          }),
+          description: payment.descripcion || payment.titulo
+        })));
+      })
+      .catch(error => {
+        console.error('No se pudo cargar el historial de pagos:', error);
+        if (!cancelled) {
+          setPaymentHistoryError(error instanceof Error ? error.message : 'No se pudo cargar el historial de pagos');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingPaymentHistory(false);
+      });
+    return () => { cancelled = true; };
+  }, [currentScreen, userData, userType]);
+
   const handleLogin = (type: UserMode, data: any) => {
     const activeUser = type === 'admin' ? data : userDataForMode(data, type);
     setUserData(activeUser);
@@ -898,6 +802,11 @@ export default function App() {
     triggerToast(result.mensaje);
   };
 
+  const handleViewLatestActivity = (request: any) => {
+    setLastActivityData(request);
+    setCurrentScreen('request-details');
+  };
+
   const handleMarkNotificationRead = async (notificationId: number) => {
     try {
       await marcarNotificacionLeida(notificationId);
@@ -951,66 +860,6 @@ export default function App() {
       console.error('No se pudo completar el servicio:', error);
       triggerToast(error instanceof Error ? error.message : 'No se pudo completar el servicio');
     }
-  };
-
-  const handleConfirmPayment = (method: 'efectivo' | 'tarjeta', amount: number) => {
-    if (!pendingPayment) return;
-
-    const job = activeJobs.find(j => j.id === pendingPayment.jobId);
-    if (!job) return;
-
-    // Create transaction
-    const newTransaction = {
-      id: `trans-${Date.now()}`,
-      serviceId: job.id,
-      clientId: job.chatId,
-      clientName: job.clientName,
-      clientPhoto: job.clientPhoto,
-      professionalId: userData?.email || '',
-      serviceName: job.jobType,
-      amount: amount,
-      paymentMethod: method,
-      paymentStatus: method === 'tarjeta' ? 'completado' : 'pendiente',
-      date: new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }),
-      description: job.description
-    };
-
-    setTransactions(prev => [newTransaction, ...prev]);
-
-    // If card payment, complete immediately
-    if (method === 'tarjeta') {
-      completeJobWithPayment(pendingPayment.jobId, amount, method);
-    } else {
-      // For cash, mark as pending confirmation
-      alert('Se ha enviado una solicitud de confirmación de pago al cliente. El servicio se completará cuando el cliente confirme el pago en efectivo.');
-      setShowPaymentModal(false);
-      setPendingPayment(null);
-    }
-  };
-
-  const completeJobWithPayment = (jobId: string, amount: number, method: 'efectivo' | 'tarjeta') => {
-    const job = activeJobs.find(j => j.id === jobId);
-    if (!job) return;
-
-    // Mark job as completed
-    setActiveJobs(prev => prev.map(j =>
-      j.id === jobId ? { ...j, isCompleted: true } : j
-    ));
-
-    // Mark the chat as inactive and rated
-    setChats(prev => prev.map(chat =>
-      chat.id === job.chatId ? {
-        ...chat,
-        isActive: false,
-        professionalRated: true,
-        professionalRating: job.pendingRating || 5
-      } : chat
-    ));
-
-    // Show success animation
-    setShowPaymentSuccess(true);
-    setShowPaymentModal(false);
-    setPendingPayment(null);
   };
 
   const handleOpenChatFromJob = (chatId: string) => {
@@ -1259,6 +1108,18 @@ export default function App() {
     }
   };
 
+  const handleConfirmCashPayment = async (quoteId: string) => {
+    try {
+      const result = await confirmarPagoEfectivo(quoteId);
+      const conversationResult = await obtenerConversaciones();
+      setChats(mapConversations(conversationResult.conversaciones || [], notifications));
+      triggerToast(result.mensaje);
+    } catch (error) {
+      console.error('No se pudo confirmar el pago en efectivo:', error);
+      triggerToast(error instanceof Error ? error.message : 'No se pudo confirmar el pago');
+    }
+  };
+
   const hasUnreadChats = chats.some(chat => chat.unread);
   const unreadNotificationCount = notifications.filter(notification => Number(notification.leida) === 0).length;
   const selectedChat = chats.find(chat => chat.id === selectedChatId);
@@ -1308,6 +1169,8 @@ export default function App() {
         <ClientDashboard
           userName={`${userData.name}${userData.lastName ? ' ' + userData.lastName : ''}`}
           userData={userData}
+          latestActivity={serviceRequests[0] || null}
+          onViewActivity={handleViewLatestActivity}
           onLogout={handleLogout}
           onNavigate={handleNavigation}
           onShowTutorial={handleShowTutorial}
@@ -1419,20 +1282,25 @@ export default function App() {
         <RequestDetails
           onBack={handleBackToDashboard}
           professionalData={{
-            name: 'María',
-            lastName: 'Rodríguez',
-            photo: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&h=200&fit=crop',
-            departamento: 'San Salvador',
-            categories: ['Limpieza', 'Jardinería'],
-            yearsExperience: 5
+            id: lastActivityData?.profesional_id,
+            name: lastActivityData?.profesional_nombre,
+            lastName: lastActivityData?.profesional_apellido,
+            photo: lastActivityData?.foto_profesional || '',
+            departamento: lastActivityData?.departamento,
+            municipio: lastActivityData?.municipio,
+            categories: [lastActivityData?.categoria].filter(Boolean)
           }}
           requestData={{
-            jobType: 'Limpieza',
-            description: 'Limpieza Profunda de Casa - 3 habitaciones, cocina y 2 baños. Productos incluidos.',
-            date: '15 de Marzo, 2026',
-            budget: '$150'
+            jobType: lastActivityData?.categoria || 'Servicio',
+            description: lastActivityData?.descripcion || '',
+            date: lastActivityData?.fecha_servicio,
+            budget: lastActivityData?.presupuesto,
+            departamento: lastActivityData?.departamento,
+            municipio: lastActivityData?.municipio,
+            status: lastActivityData?.estado
           }}
           clientData={userData}
+          onSendRequest={handleSendRequest}
         />
       )}
 
@@ -1499,6 +1367,9 @@ export default function App() {
         <PaymentHistory
           onBack={handleBackToDashboard}
           transactions={transactions}
+          userType={userType === 'professional' ? 'professional' : 'client'}
+          isLoading={isLoadingPaymentHistory}
+          error={paymentHistoryError}
         />
       )}
 
@@ -1508,30 +1379,6 @@ export default function App() {
           savedCards={savedCards}
           onAddCard={handleAddCard}
           onDeleteCard={handleDeleteCard}
-        />
-      )}
-
-      {/* Payment Modals */}
-      {showPaymentModal && pendingPayment && (
-        <PaymentModal
-          isOpen={showPaymentModal}
-          onClose={() => {
-            setShowPaymentModal(false);
-            setPendingPayment(null);
-          }}
-          onConfirmPayment={handleConfirmPayment}
-          clientName={pendingPayment.clientName}
-          serviceName={pendingPayment.serviceName}
-          estimatedAmount={pendingPayment.amount}
-        />
-      )}
-
-      {showPaymentSuccess && pendingPayment && (
-        <PaymentSuccessAnimation
-          isOpen={showPaymentSuccess}
-          onClose={() => setShowPaymentSuccess(false)}
-          amount={pendingPayment.amount}
-          paymentMethod="tarjeta"
         />
       )}
 
@@ -1585,6 +1432,7 @@ export default function App() {
           savedCards={savedCards}
           onSendInvoice={handleSendInvoice}
           onRespondQuote={handleRespondQuote}
+          onConfirmCashPayment={handleConfirmCashPayment}
         />
       )}
 

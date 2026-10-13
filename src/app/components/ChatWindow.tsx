@@ -26,6 +26,7 @@ interface Message {
     isPaid: boolean;
     invoiceId: string;
     paymentMethod: 'efectivo' | 'tarjeta';
+    paymentStatus?: 'pendiente' | 'completado' | null;
     status?: 'programada' | 'pendiente' | 'aceptada' | 'rechazada';
     deliveryMode?: 'al_finalizar' | 'fecha';
     scheduledDate?: string | null;
@@ -52,11 +53,12 @@ interface ChatWindowProps {
   userType: 'client' | 'professional';
   onMarkFinished?: () => void;
   onSendMessage?: (chatId: string, message: string) => void;
-  onRate?: (chatId: string, rating: number, comment: string) => void;
+  onRate?: (chatId: string, rating: number, comment: string) => Promise<void>;
   onViewProfile?: () => void;
   savedCards?: any[];
   onSendInvoice?: (chatId: string, items: InvoiceItem[], deliveryMode: 'al_finalizar' | 'fecha', scheduledDate: string) => Promise<void>;
   onRespondQuote?: (chatId: string, quoteId: string, decision: 'aceptada' | 'rechazada') => void;
+  onConfirmCashPayment?: (quoteId: string) => Promise<void>;
 }
 
 export function ChatWindow({
@@ -74,7 +76,8 @@ export function ChatWindow({
   onViewProfile,
   savedCards = [],
   onSendInvoice,
-  onRespondQuote
+  onRespondQuote,
+  onConfirmCashPayment
 }: ChatWindowProps) {
   const [newMessage, setNewMessage] = useState('');
   const [showRequestModal, setShowRequestModal] = useState(false);
@@ -109,9 +112,9 @@ export function ChatWindow({
     onMarkFinished?.();
   };
 
-  const handleRatingSubmit = (rating: number, comment: string) => {
+  const handleRatingSubmit = async (rating: number, comment: string) => {
     if (userType === 'client' && onRate) {
-      onRate(chatData.id, rating, comment);
+      await onRate(chatData.id, rating, comment);
     }
     setShowRatingModal(false);
   };
@@ -217,12 +220,22 @@ export function ChatWindow({
                       timestamp={message.timestamp}
                       userType={userType}
                       paymentMethod={message.invoiceData.paymentMethod}
+                      paymentStatus={message.invoiceData.paymentStatus}
                       status={message.invoiceData.status}
                       deliveryMode={message.invoiceData.deliveryMode}
                       scheduledDate={message.invoiceData.scheduledDate}
                       onRespond={
                         userType === 'client' && message.invoiceData.status === 'pendiente'
                           ? (decision) => onRespondQuote?.(chatData.id, message.invoiceData!.invoiceId, decision)
+                          : undefined
+                      }
+                      onConfirmCashPayment={
+                        userType === 'client' &&
+                        !chatData.isActive &&
+                        message.invoiceData.status === 'aceptada' &&
+                        message.invoiceData.paymentStatus === 'pendiente' &&
+                        message.invoiceData.paymentMethod === 'efectivo'
+                          ? () => onConfirmCashPayment?.(message.invoiceData!.invoiceId) || Promise.resolve()
                           : undefined
                       }
                     />

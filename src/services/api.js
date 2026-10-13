@@ -168,6 +168,18 @@ export async function obtenerNotificaciones() {
   return solicitarApi("notificaciones.php");
 }
 
+export async function obtenerPagos() {
+  return solicitarApi("pagos.php");
+}
+
+export async function confirmarPagoEfectivo(quoteId) {
+  return solicitarApi("pagos.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quoteId }),
+  });
+}
+
 export async function marcarNotificacionLeida(notificationId) {
   return solicitarApi("notificaciones.php", {
     method: "POST",
