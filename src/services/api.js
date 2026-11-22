@@ -200,3 +200,77 @@ export async function logoutUsuario() {
   }
   return result;
 }
+
+async function solicitarApiMultipart(ruta, formData) {
+  const response = await fetch(`${API_URL}/${ruta}`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+  const responseText = await response.text();
+  let result;
+  try {
+    result = JSON.parse(responseText);
+  } catch {
+    const responseHint = responseText
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 220);
+    throw new Error(
+      `El servidor devolvió una respuesta no válida (HTTP ${response.status}).${responseHint ? ` Respuesta: ${responseHint}` : " Revisa que XAMPP esté activo y que el endpoint PHP no tenga errores."}`
+    );
+  }
+  if (!response.ok || !result.ok) {
+    throw new Error(result.mensaje || "No se pudo completar la operación");
+  }
+  return result;
+}
+
+export async function obtenerPortafolio(profesionalId) {
+  return solicitarApi(`portafolio.php?profesional_id=${encodeURIComponent(profesionalId)}`);
+}
+
+export async function crearTrabajoPortafolio({ titulo, fotos }) {
+  const formData = new FormData();
+  formData.append("action", "create_work");
+  formData.append("titulo", titulo);
+  Array.from(fotos || []).forEach((foto) => {
+    formData.append("fotos[]", foto);
+  });
+  return solicitarApiMultipart("portafolio.php", formData);
+}
+
+export async function agregarFotosPortafolio(trabajoId, fotos) {
+  const formData = new FormData();
+  formData.append("action", "add_photos");
+  formData.append("trabajo_id", String(trabajoId));
+  Array.from(fotos || []).forEach((foto) => {
+    formData.append("fotos[]", foto);
+  });
+  return solicitarApiMultipart("portafolio.php", formData);
+}
+
+export async function eliminarFotoPortafolio(fotoId) {
+  return solicitarApi("portafolio.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "delete_photo", foto_id: fotoId }),
+  });
+}
+
+export async function actualizarTituloPortafolio(trabajoId, titulo) {
+  return solicitarApi("portafolio.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "update_title", trabajo_id: trabajoId, titulo }),
+  });
+}
+
+export async function eliminarTrabajoPortafolio(trabajoId) {
+  return solicitarApi("portafolio.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "delete_work", trabajo_id: trabajoId }),
+  });
+}

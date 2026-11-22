@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowLeft, Star, MapPin, Filter, CreditCard, Banknote } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { obtenerProfesionales } from '../../services/api';
+import { ScheduleModal, WorkSchedule } from './ScheduleModal';
 
 interface ProfessionalBrowserProps {
   category: string;
@@ -137,6 +138,12 @@ export function ProfessionalBrowser({ category, onBack, onViewProfile }: Profess
   const [professionals, setProfessionals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [openSchedule, setOpenSchedule] = useState(false);
+  const [selectedSchedule, setSelectedSchedule] = useState<WorkSchedule>({
+    days: "Lunes a Sábado",
+    hours: "08:00 AM - 05:00 PM",
+  });
+  const [selectedProName, setSelectedProName] = useState("Profesional");
 
   useEffect(() => {
     let cancelled = false;
@@ -351,15 +358,32 @@ export function ProfessionalBrowser({ category, onBack, onViewProfile }: Profess
                     </div>
 
                     {/* Price and Action */}
-                    <div className="flex items-center justify-between pt-4 border-t">
-                      <span className="text-sm text-gray-500">
-                        {professional.reviewCount ? `${professional.reviewCount} reseñas verificadas` : 'Aún sin reseñas'}
-                      </span>
+                    <div className="flex flex-col items-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const proName = professional.name || professional.nombre || "Profesional";
+                          const saved = JSON.parse(localStorage.getItem("chambre_schedules") || "{}");
+
+                          setSelectedProName(proName);
+                          setSelectedSchedule(
+                            saved[proName] || 
+                              professional.schedule || {
+                                days: "Lunes a Sabado",
+                                hours: "08:00 AM - 05:00 PM",
+                              }                            
+                          );
+                          setOpenSchedule(true);
+                        }}
+                        className="rounded-lg border border-amber-500 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-50"
+                      >
+                        Ver horario de atención
+                      </button>
                       <button
                         onClick={() => onViewProfile(professional)}
-                        className="px-6 py-2 bg-[#FFC900] text-[#1D1D1B] font-medium rounded-lg hover:bg-[#e6b500] transition-colors"
+                        className="px-6 py-2 bg-[#FFC900] text-[#1D1D1B] font-medium rounded-lg hover:bg-[#e6b500]"
                       >
-                        Ver Perfil Completo
+                        Ver perfil completo
                       </button>
                     </div>
                   </div>
@@ -369,6 +393,25 @@ export function ProfessionalBrowser({ category, onBack, onViewProfile }: Profess
           </div>
         )}
       </div>
+      <ScheduleModal
+        isOpen={openSchedule}
+        onClose={() => setOpenSchedule(false)}
+        schedule={selectedSchedule}
+        professionalName={selectedProName}
+        canEdit={false}
+        onSave={(newSchedule) => {
+          setSelectedSchedule(newSchedule);
+          setProfessionals((prev) => {
+            const updated = prev.map((prof) => 
+              (prof.name || prof.nombre ) === selectedProName 
+                ? { ...prof, schedule: newSchedule }
+                : prof
+          );
+            localStorage.setItem('chambly_schedules', JSON.stringify(updated));
+            return updated;
+          });
+        }}
+      />
     </div>
   );
 }

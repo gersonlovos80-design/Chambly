@@ -25,6 +25,7 @@ export function PaymentSuccessAnimation({
         delay: Math.random() * 0.5
       }));
       setConfetti(particles);
+    
 
   
       // Auto close after 3 seconds
@@ -37,7 +38,6 @@ export function PaymentSuccessAnimation({
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center">
       {/* Confetti */}
