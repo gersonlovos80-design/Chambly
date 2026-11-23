@@ -40,7 +40,8 @@ export async function actualizarPerfilRol(payload) {
   });
   const result = await response.json();
   if (!response.ok || !result.ok) {
-    throw new Error(result.mensaje || "No se pudo actualizar el perfil o el modo");
+    const detalle = result.detalle ? ` Detalle: ${result.detalle}` : "";
+    throw new Error((result.mensaje || "No se pudo actualizar el perfil o el modo") + detalle);
   }
   return result;
 }
