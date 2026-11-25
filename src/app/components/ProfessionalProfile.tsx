@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Camera, MapPin, Star, X, Edit2, Save, CreditCard, Banknote, Plus, Trash2, ImagePlus, Loader2 } from 'lucide-react';
+import { ArrowLeft, Camera, MapPin, Star, X, Edit2, Save, CreditCard, Banknote, Plus, Trash2, ImagePlus, Loader2, RefreshCw } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { RequestServiceModal, type ServiceRequestPayload } from './RequestServiceModal';
 import { ScheduleModal, WorkSchedule } from './ScheduleModal';
@@ -8,7 +8,8 @@ import {
   crearTrabajoPortafolio,
   agregarFotosPortafolio,
   eliminarFotoPortafolio,
-  actualizarTituloPortafolio
+  actualizarTrabajoPortafolio,
+  reemplazarFotoPortafolio
 } from '../../services/api';
 
 interface ProfessionalProfileProps {
@@ -27,12 +28,24 @@ interface PortfolioPhoto {
   url: string;
   ruta_archivo?: string;
   mime_type?: string;
+  descripcion?: string;
 }
 
 interface PortfolioWork {
   id: number | string;
   titulo: string;
   fotos: PortfolioPhoto[];
+}
+
+interface NewWorkPhoto {
+  file: File;
+  preview: string;
+  descripcion: string;
+}
+
+interface WorkEditDraft {
+  titulo: string;
+  fotoDescripciones: Record<string, string>;
 }
 
 const getCategoryColor = (category: string): string => {
@@ -62,6 +75,7 @@ const departamentos = [
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png'];
 const ALLOWED_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png'];
+const MIN_FOTOS_TRABAJO = 3;
 
 function archivoImagenValido(file: File): boolean {
   const typeOk = ALLOWED_IMAGE_TYPES.includes(file.type);
@@ -91,7 +105,7 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
     const saved = localStorage.getItem('chambly_my_schedule');
     return saved
       ? JSON.parse(saved)
-      : { days: 'lunes a sabado', hours: '08:00 AM - 05:00 PM' };
+      : { days: 'lunes a sábado', hours: '08:00 AM - 05:00 PM' };
   });
 
   const [editedData, setEditedData] = useState({
@@ -115,15 +129,17 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
   const [savingNewWork, setSavingNewWork] = useState(false);
   const [addingPhotosWorkId, setAddingPhotosWorkId] = useState<string | number | null>(null);
   const [deletingPhotoId, setDeletingPhotoId] = useState<string | number | null>(null);
-  const [savingTitleWorkId, setSavingTitleWorkId] = useState<string | number | null>(null);
+  const [replacingPhotoId, setReplacingPhotoId] = useState<string | number | null>(null);
+  const [savingWorkId, setSavingWorkId] = useState<string | number | null>(null);
   const [showNewWorkForm, setShowNewWorkForm] = useState(false);
   const [newWorkTitle, setNewWorkTitle] = useState('');
-  const [newWorkFiles, setNewWorkFiles] = useState<File[]>([]);
-  const [newWorkPreviews, setNewWorkPreviews] = useState<string[]>([]);
+  const [newWorkPhotos, setNewWorkPhotos] = useState<NewWorkPhoto[]>([]);
   const [newWorkError, setNewWorkError] = useState('');
-  const [editingTitles, setEditingTitles] = useState<Record<string, string>>({});
+  const [editingWorkId, setEditingWorkId] = useState<string | number | null>(null);
+  const [workEditDrafts, setWorkEditDrafts] = useState<Record<string, WorkEditDraft>>({});
   const newWorkInputRef = useRef<HTMLInputElement | null>(null);
   const addPhotosInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const replacePhotoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
     setEditedData({
@@ -142,9 +158,9 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
 
   useEffect(() => {
     return () => {
-      newWorkPreviews.forEach((url) => URL.revokeObjectURL(url));
+      newWorkPhotos.forEach((photo) => URL.revokeObjectURL(photo.preview));
     };
-  }, [newWorkPreviews]);
+  }, [newWorkPhotos]);
 
   useEffect(() => {
     if (!portfolioOwnerId) {
@@ -171,6 +187,12 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
       });
     return () => { cancelled = true; };
   }, [portfolioOwnerId]);
+
+  const applyPortfolioResult = (result: any) => {
+    if (Array.isArray(result?.trabajos)) {
+      setPortfolioWorks(result.trabajos);
+    }
+  };
 
   const handlePhotoUpload = () => {
     alert('Función de carga de foto de perfil - En desarrollo');
@@ -228,10 +250,9 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
   };
 
   const resetNewWorkForm = () => {
-    newWorkPreviews.forEach((url) => URL.revokeObjectURL(url));
+    newWorkPhotos.forEach((photo) => URL.revokeObjectURL(photo.preview));
     setNewWorkTitle('');
-    setNewWorkFiles([]);
-    setNewWorkPreviews([]);
+    setNewWorkPhotos([]);
     setNewWorkError('');
     setShowNewWorkForm(false);
     if (newWorkInputRef.current) newWorkInputRef.current.value = '';
@@ -248,20 +269,26 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
       setNewWorkError('');
     }
     if (valid.length > 0) {
-      const previews = valid.map((file) => URL.createObjectURL(file));
-      setNewWorkFiles((prev) => [...prev, ...valid]);
-      setNewWorkPreviews((prev) => [...prev, ...previews]);
+      const nuevas = valid.map((file) => ({
+        file,
+        preview: URL.createObjectURL(file),
+        descripcion: ''
+      }));
+      setNewWorkPhotos((prev) => [...prev, ...nuevas]);
     }
     event.target.value = '';
   };
 
   const handleRemoveNewWorkFile = (index: number) => {
-    setNewWorkFiles((prev) => prev.filter((_, i) => i !== index));
-    setNewWorkPreviews((prev) => {
-      const url = prev[index];
-      if (url) URL.revokeObjectURL(url);
+    setNewWorkPhotos((prev) => {
+      const photo = prev[index];
+      if (photo) URL.revokeObjectURL(photo.preview);
       return prev.filter((_, i) => i !== index);
     });
+  };
+
+  const handleNewWorkPhotoDescription = (index: number, descripcion: string) => {
+    setNewWorkPhotos((prev) => prev.map((photo, i) => i === index ? { ...photo, descripcion } : photo));
   };
 
   const handleCreateWork = async () => {
@@ -272,23 +299,26 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
       setNewWorkError('El título del trabajo es obligatorio.');
       return;
     }
-    if (newWorkFiles.length < 3) {
+    if (newWorkPhotos.length < MIN_FOTOS_TRABAJO) {
       setNewWorkError('Debes agregar al menos 3 fotos para guardar este trabajo.');
       return;
     }
-    if (newWorkFiles.some((file) => !archivoImagenValido(file))) {
+    if (newWorkPhotos.some((photo) => !archivoImagenValido(photo.file))) {
       setNewWorkError('Solo se permiten imágenes en formato JPG o PNG.');
       return;
     }
 
     setSavingNewWork(true);
     try {
-      const result = await crearTrabajoPortafolio({ titulo, fotos: newWorkFiles });
-      if (Array.isArray(result.trabajos)) {
-        setPortfolioWorks(result.trabajos);
-      } else if (portfolioOwnerId) {
+      const result = await crearTrabajoPortafolio({
+        titulo,
+        fotos: newWorkPhotos.map((photo) => photo.file),
+        descripciones: newWorkPhotos.map((photo) => photo.descripcion || '')
+      });
+      applyPortfolioResult(result);
+      if (!Array.isArray(result?.trabajos) && portfolioOwnerId) {
         const refreshed = await obtenerPortafolio(portfolioOwnerId);
-        setPortfolioWorks(Array.isArray(refreshed.trabajos) ? refreshed.trabajos : []);
+        applyPortfolioResult(refreshed);
       }
       setPortfolioMessage(result.mensaje || 'Trabajo guardado en tu portafolio.');
       resetNewWorkForm();
@@ -296,6 +326,80 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
       setNewWorkError(error instanceof Error ? error.message : 'No se pudo guardar el trabajo.');
     } finally {
       setSavingNewWork(false);
+    }
+  };
+
+  const openWorkEditor = (work: PortfolioWork) => {
+    const fotoDescripciones: Record<string, string> = {};
+    (work.fotos || []).forEach((foto) => {
+      fotoDescripciones[String(foto.id)] = foto.descripcion || '';
+    });
+    setWorkEditDrafts((prev) => ({
+      ...prev,
+      [String(work.id)]: { titulo: work.titulo || '', fotoDescripciones }
+    }));
+    setEditingWorkId(work.id);
+    setPortfolioActionError('');
+    setPortfolioMessage('');
+  };
+
+  const closeWorkEditor = (workId: string | number) => {
+    setEditingWorkId((current) => (String(current) === String(workId) ? null : current));
+    setWorkEditDrafts((prev) => {
+      const copy = { ...prev };
+      delete copy[String(workId)];
+      return copy;
+    });
+  };
+
+  const updateWorkDraftTitle = (workId: string | number, titulo: string) => {
+    const key = String(workId);
+    setWorkEditDrafts((prev) => ({
+      ...prev,
+      [key]: { ...(prev[key] || { titulo: '', fotoDescripciones: {} }), titulo }
+    }));
+  };
+
+  const updateWorkDraftPhotoDescription = (workId: string | number, fotoId: string | number, descripcion: string) => {
+    const key = String(workId);
+    setWorkEditDrafts((prev) => {
+      const draft = prev[key] || { titulo: '', fotoDescripciones: {} };
+      return {
+        ...prev,
+        [key]: {
+          ...draft,
+          fotoDescripciones: { ...draft.fotoDescripciones, [String(fotoId)]: descripcion }
+        }
+      };
+    });
+  };
+
+  const handleSaveWork = async (work: PortfolioWork) => {
+    const draft = workEditDrafts[String(work.id)];
+    if (!draft) return;
+    const titulo = draft.titulo.trim();
+    if (!titulo) {
+      setPortfolioActionError('El título del trabajo es obligatorio.');
+      return;
+    }
+    setPortfolioMessage('');
+    setPortfolioActionError('');
+    setSavingWorkId(work.id);
+    try {
+      const result = await actualizarTrabajoPortafolio(work.id, {
+        titulo,
+        fotos: (work.fotos || []).map((foto) => ({
+          id: foto.id,
+          descripcion: draft.fotoDescripciones[String(foto.id)] ?? foto.descripcion ?? ''
+        }))
+      });
+      applyPortfolioResult(result);
+      setPortfolioMessage(result.mensaje || 'Trabajo actualizado.');
+      closeWorkEditor(work.id);
+    } catch (error) {
+      setPortfolioActionError(error instanceof Error ? error.message : 'No se pudo actualizar el trabajo.');
+    } finally {
+      setSavingWorkId(null);
     }
   };
 
@@ -308,6 +412,7 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
     setPortfolioMessage('');
     if (invalid.length > 0) {
       setPortfolioActionError('Solo se permiten imágenes en formato JPG o PNG.');
+      if (valid.length === 0) return;
     } else {
       setPortfolioActionError('');
     }
@@ -316,11 +421,21 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
     setAddingPhotosWorkId(workId);
     try {
       const result = await agregarFotosPortafolio(workId, valid);
-      if (Array.isArray(result.trabajos)) {
-        setPortfolioWorks(result.trabajos);
+      applyPortfolioResult(result);
+      const draft = workEditDrafts[String(workId)];
+      if (draft && Array.isArray(result?.trabajos)) {
+        const updated = (result.trabajos as PortfolioWork[]).find((w) => String(w.id) === String(workId));
+        if (updated) {
+          const fotoDescripciones = { ...draft.fotoDescripciones };
+          (updated.fotos || []).forEach((foto) => {
+            if (fotoDescripciones[String(foto.id)] === undefined) {
+              fotoDescripciones[String(foto.id)] = foto.descripcion || '';
+            }
+          });
+          setWorkEditDrafts((prev) => ({ ...prev, [String(workId)]: { ...draft, fotoDescripciones } }));
+        }
       }
       setPortfolioMessage(result.mensaje || 'Fotos agregadas al trabajo.');
-      setPortfolioActionError('');
     } catch (error) {
       setPortfolioActionError(error instanceof Error ? error.message : 'No se pudieron agregar las fotos.');
     } finally {
@@ -328,59 +443,47 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
     }
   };
 
+  const handleReplacePhoto = async (workId: string | number, foto: PortfolioPhoto, event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setPortfolioMessage('');
+    if (!archivoImagenValido(file)) {
+      setPortfolioActionError('Solo se permiten imágenes en formato JPG o PNG.');
+      return;
+    }
+    setPortfolioActionError('');
+    setReplacingPhotoId(foto.id);
+    try {
+      const draft = workEditDrafts[String(workId)];
+      const descripcion = draft?.fotoDescripciones[String(foto.id)] ?? foto.descripcion ?? '';
+      const result = await reemplazarFotoPortafolio(foto.id, file, descripcion);
+      applyPortfolioResult(result);
+      setPortfolioMessage(result.mensaje || 'Foto reemplazada correctamente.');
+    } catch (error) {
+      setPortfolioActionError(error instanceof Error ? error.message : 'No se pudo reemplazar la foto.');
+    } finally {
+      setReplacingPhotoId(null);
+    }
+  };
+
   const handleDeletePhoto = async (work: PortfolioWork, photoId: string | number) => {
     setPortfolioMessage('');
     setPortfolioActionError('');
-    if ((work.fotos?.length || 0) <= 3) {
-      setPortfolioActionError('No puedes dejar un trabajo con menos de 3 fotos. Agrega otra foto antes de eliminar esta.');
+    const fotoCount = (work.fotos || []).length;
+    if (fotoCount <= MIN_FOTOS_TRABAJO) {
+      setPortfolioActionError('Debes tener más de 3 fotos si quieres eliminar esta foto. Sube otra foto o reemplázala.');
       return;
     }
     setDeletingPhotoId(photoId);
     try {
       const result = await eliminarFotoPortafolio(photoId);
-      if (Array.isArray(result.trabajos)) {
-        setPortfolioWorks(result.trabajos);
-      }
+      applyPortfolioResult(result);
       setPortfolioMessage(result.mensaje || 'Foto eliminada.');
     } catch (error) {
       setPortfolioActionError(error instanceof Error ? error.message : 'No se pudo eliminar la foto.');
     } finally {
       setDeletingPhotoId(null);
-    }
-  };
-
-  const handleSaveWorkTitle = async (work: PortfolioWork) => {
-    const nextTitle = (editingTitles[String(work.id)] ?? work.titulo).trim();
-    setPortfolioMessage('');
-    setPortfolioActionError('');
-    if (!nextTitle) {
-      setPortfolioActionError('El título del trabajo es obligatorio.');
-      return;
-    }
-    if (nextTitle === work.titulo) {
-      setEditingTitles((prev) => {
-        const copy = { ...prev };
-        delete copy[String(work.id)];
-        return copy;
-      });
-      return;
-    }
-    setSavingTitleWorkId(work.id);
-    try {
-      const result = await actualizarTituloPortafolio(work.id, nextTitle);
-      if (Array.isArray(result.trabajos)) {
-        setPortfolioWorks(result.trabajos);
-      }
-      setPortfolioMessage(result.mensaje || 'Título actualizado.');
-      setEditingTitles((prev) => {
-        const copy = { ...prev };
-        delete copy[String(work.id)];
-        return copy;
-      });
-    } catch (error) {
-      setPortfolioActionError(error instanceof Error ? error.message : 'No se pudo actualizar el título.');
-    } finally {
-      setSavingTitleWorkId(null);
     }
   };
 
@@ -434,7 +537,7 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
                 >
                   <Save size={18} />
-                  Guardar Cambios
+                  Guardar cambios
                 </button>
               </div>
             )}
@@ -499,11 +602,11 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
         </div>
 
         <div className="bg-white rounded-xl shadow-sm p-8 mb-6">
-          <h2 className="text-2xl mb-6">Información Profesional</h2>
+          <h2 className="text-2xl mb-6">Información profesional</h2>
           <div className="space-y-6">
             {isEditing && isOwnProfile && (
               <div className="space-y-4 p-4 bg-[#FAF8F5] rounded-lg mb-6">
-                <h3 className="font-medium text-[#1D1D1B] mb-3">Datos Personales</h3>
+                <h3 className="font-medium text-[#1D1D1B] mb-3">Datos personales</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-[#1D1D1B] mb-2">Nombre</label>
@@ -519,7 +622,7 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
                   <input type="text" value={editedData.phone} onChange={(e) => setEditedData(prev => ({ ...prev, phone: e.target.value }))} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1]" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#1D1D1B] mb-2">Correo Electrónico</label>
+                  <label className="block text-sm font-medium text-[#1D1D1B] mb-2">Correo electrónico</label>
                   <input type="email" value={editedData.email} onChange={(e) => setEditedData(prev => ({ ...prev, email: e.target.value }))} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1]" />
                 </div>
                 <div>
@@ -537,7 +640,7 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
             )}
 
             <div>
-              <h3 className="font-medium text-[#1D1D1B] mb-2">Años de Experiencia</h3>
+              <h3 className="font-medium text-[#1D1D1B] mb-2">Años de experiencia</h3>
               {isEditing && isOwnProfile ? (
                 <input type="number" value={editedData.yearsExperience} onChange={(e) => setEditedData(prev => ({ ...prev, yearsExperience: e.target.value }))} min="0" className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1]" />
               ) : (
@@ -548,14 +651,14 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
             <div>
               <h3 className="font-medium text-[#1D1D1B] mb-2">Educación</h3>
               {userData.educationType === 'titulo' ? (
-                <p className="text-lg">Estudios Formales</p>
+                <p className="text-lg">Estudios formales</p>
               ) : (
                 <p className="text-lg">Empírico</p>
               )}
             </div>
 
             <div>
-              <h3 className="font-medium text-[#1D1D1B] mb-3">Categorías de Trabajo</h3>
+              <h3 className="font-medium text-[#1D1D1B] mb-3">Categorías de trabajo</h3>
               {isEditing && isOwnProfile ? (
                 <div className="grid grid-cols-2 gap-3">
                   {allCategories.map((category) => (
@@ -575,7 +678,7 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
             </div>
 
             <div>
-              <h3 className="font-medium text-[#1D1D1B] mb-3">Métodos de Pago Preferidos</h3>
+              <h3 className="font-medium text-[#1D1D1B] mb-3">Métodos de pago preferidos</h3>
               {isEditing && isOwnProfile ? (
                 <div className="grid grid-cols-2 gap-3">
                   <label className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${editedData.preferredPaymentMethods.includes('efectivo') ? 'bg-[#D3CFED] border-[#685AA1]' : 'border-gray-300 hover:bg-gray-50'}`}>
@@ -615,9 +718,9 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
         <div className="bg-white rounded-xl shadow-sm p-8 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <div>
-              <h2 className="text-2xl">Portafolio de Trabajos</h2>
+              <h2 className="text-2xl">Portafolio de trabajos</h2>
               <p className="text-sm text-gray-600 mt-1">
-                Cada trabajo debe tener un título y al menos 3 fotos (JPG o PNG). No hay límite máximo de fotos.
+                Cada trabajo debe tener un título y al menos 3 fotos (JPG o PNG). No hay límite máximo de fotos. Cada foto puede tener una descripción corta opcional.
               </p>
             </div>
             {isOwnProfile && (
@@ -665,24 +768,35 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
                     onChange={handleSelectNewWorkFiles}
                     className="block w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[#685AA1] file:text-white hover:file:bg-[#584a89]"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Puedes seleccionar varias fotos a la vez. No hay límite máximo. Formatos permitidos: JPG y PNG.</p>
+                  <p className="text-xs text-gray-500 mt-1">Puedes seleccionar varias fotos a la vez. No hay límite máximo. Formatos permitidos: JPG y PNG. Cada foto puede tener una descripción opcional.</p>
                 </div>
 
-                {newWorkFiles.length > 0 && (
+                {newWorkPhotos.length > 0 && (
                   <div>
-                    <p className="text-sm text-[#1D1D1B] mb-2">Fotos seleccionadas: {newWorkFiles.length} {newWorkFiles.length < 3 ? '(mínimo 3 para guardar)' : ''}</p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                      {newWorkPreviews.map((preview, index) => (
-                        <div key={`${preview}-${index}`} className="relative group">
-                          <img src={preview} alt={`Nueva foto ${index + 1}`} className="w-full h-28 object-cover rounded-lg border border-gray-200" />
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveNewWorkFile(index)}
-                            className="absolute top-1 right-1 p-1.5 bg-red-600 text-white rounded-full hover:bg-red-700"
-                            title="Quitar foto"
-                          >
-                            <X size={14} />
-                          </button>
+                    <p className="text-sm text-[#1D1D1B] mb-2">Fotos seleccionadas: {newWorkPhotos.length} {newWorkPhotos.length < MIN_FOTOS_TRABAJO ? `(mínimo ${MIN_FOTOS_TRABAJO} para guardar)` : ''}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                      {newWorkPhotos.map((photo, index) => (
+                        <div key={`${photo.preview}-${index}`} className="border border-gray-200 rounded-lg p-3 bg-white">
+                          <div className="relative mb-2">
+                            <img src={photo.preview} alt={`Nueva foto ${index + 1}`} className="w-full h-36 object-cover rounded-lg" />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveNewWorkFile(index)}
+                              className="absolute top-1 right-1 p-1.5 bg-red-600 text-white rounded-full hover:bg-red-700"
+                              title="Quitar foto"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Descripción (opcional)</label>
+                          <input
+                            type="text"
+                            value={photo.descripcion}
+                            onChange={(e) => handleNewWorkPhotoDescription(index, e.target.value)}
+                            placeholder="Ej: Antes de la remodelación"
+                            maxLength={255}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#685AA1]"
+                          />
                         </div>
                       ))}
                     </div>
@@ -735,104 +849,166 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
           ) : (
             <div className="space-y-6">
               {portfolioWorks.map((work) => {
-                const editTitleValue = editingTitles[String(work.id)];
-                const isEditingTitle = editTitleValue !== undefined;
+                const workKey = String(work.id);
+                const isEditingWork = isOwnProfile && String(editingWorkId) === workKey;
+                const draft = workEditDrafts[workKey];
                 const fotoCount = (work.fotos || []).length;
+
                 return (
-                  <div key={String(work.id)} className="border border-gray-200 rounded-xl p-5">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+                  <div key={workKey} className="border border-gray-200 rounded-xl p-5">
+                    <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 mb-4">
                       <div className="flex-1">
-                        {isOwnProfile && isEditingTitle ? (
-                          <div className="flex flex-col sm:flex-row gap-2">
+                        {isEditingWork && draft ? (
+                          <div>
+                            <label className="block text-sm font-medium text-[#1D1D1B] mb-2">Título del trabajo</label>
                             <input
                               type="text"
-                              value={editTitleValue}
-                              onChange={(e) => setEditingTitles((prev) => ({ ...prev, [String(work.id)]: e.target.value }))}
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1]"
+                              value={draft.titulo}
+                              onChange={(e) => updateWorkDraftTitle(work.id, e.target.value)}
+                              className="w-full max-w-xl px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#685AA1]"
                             />
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleSaveWorkTitle(work)}
-                                disabled={savingTitleWorkId === work.id}
-                                className="inline-flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-60"
-                              >
-                                {savingTitleWorkId === work.id ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                                Guardar
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setEditingTitles((prev) => { const c = { ...prev }; delete c[String(work.id)]; return c; })}
-                                className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-                              >
-                                Cancelar
-                              </button>
-                            </div>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-3 flex-wrap">
-                            <h3 className="text-xl font-medium text-[#1D1D1B]">{work.titulo}</h3>
-                            {isOwnProfile && (
-                              <button
-                                type="button"
-                                onClick={() => setEditingTitles((prev) => ({ ...prev, [String(work.id)]: work.titulo }))}
-                                className="text-sm text-[#685AA1] hover:underline"
-                              >
-                                Editar título
-                              </button>
-                            )}
-                          </div>
+                          <h3 className="text-xl font-medium text-[#1D1D1B]">{work.titulo}</h3>
                         )}
                         <p className="text-sm text-gray-500 mt-1">{fotoCount} foto(s)</p>
                       </div>
 
                       {isOwnProfile && (
-                        <div className="flex items-center gap-2">
-                          <input
-                            ref={(el) => { addPhotosInputRefs.current[String(work.id)] = el; }}
-                            type="file"
-                            accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                            multiple
-                            onChange={(e) => handleAddPhotosToWork(work.id, e)}
-                            className="hidden"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => addPhotosInputRefs.current[String(work.id)]?.click()}
-                            disabled={addingPhotosWorkId === work.id}
-                            className="inline-flex items-center gap-2 px-4 py-2 border border-[#685AA1] text-[#685AA1] rounded-lg hover:bg-[#F3F1FA] disabled:opacity-60"
-                          >
-                            {addingPhotosWorkId === work.id ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
-                            {addingPhotosWorkId === work.id ? 'Agregando...' : 'Agregar fotos'}
-                          </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {isEditingWork ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleSaveWork(work)}
+                                disabled={savingWorkId === work.id}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-60"
+                              >
+                                {savingWorkId === work.id ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                                Guardar cambios
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => closeWorkEditor(work.id)}
+                                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => openWorkEditor(work)}
+                              className="inline-flex items-center gap-2 px-4 py-2 bg-[#685AA1] text-white rounded-lg hover:bg-[#584a89]"
+                            >
+                              <Edit2 size={16} />
+                              Editar trabajo
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
 
+                    {isOwnProfile && isEditingWork && (
+                      <div className="mb-4 p-3 rounded-lg bg-[#F8F6FF] border border-[#D3CFED] text-sm text-[#1D1D1B]">
+                        Aquí puedes editar todo el trabajo: título y la descripción de cada foto. Guarda los cambios del texto con “Guardar cambios”. Puedes reemplazar fotos, agregar más o eliminar fotos solo si el trabajo quedará con más de 3. Si tiene exactamente 3 fotos y quieres cambiar una, usa “Reemplazar foto”.
+                      </div>
+                    )}
+
                     {fotoCount === 0 ? (
                       <p className="text-gray-500 text-sm">Este trabajo no tiene fotos.</p>
                     ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                        {work.fotos.map((foto) => (
-                          <div key={String(foto.id)} className="relative group">
-                            <ImageWithFallback
-                              src={foto.url}
-                              alt={work.titulo}
-                              className="w-full h-36 object-cover rounded-lg border border-gray-200"
-                            />
-                            {isOwnProfile && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeletePhoto(work, foto.id)}
-                                disabled={deletingPhotoId === foto.id}
-                                title={fotoCount <= 3 ? 'Un trabajo guardado debe tener al menos 3 fotos' : 'Eliminar foto'}
-                                className="absolute top-2 right-2 p-2 bg-red-600 text-white rounded-full opacity-90 hover:opacity-100 hover:bg-red-700 disabled:opacity-60"
-                              >
-                                {deletingPhotoId === foto.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                              </button>
-                            )}
-                          </div>
-                        ))}
+                      <div className={`grid gap-4 ${isEditingWork ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4'}`}>
+                        {(work.fotos || []).map((foto) => {
+                          const fotoKey = String(foto.id);
+                          const canDelete = fotoCount > MIN_FOTOS_TRABAJO;
+                          const deleteMessage = 'Debes tener más de 3 fotos si quieres eliminar esta foto. Sube otra foto o reemplázala.';
+                          return (
+                            <div key={fotoKey} className="border border-gray-200 rounded-lg p-3 bg-white">
+                              <div className="relative group">
+                                <ImageWithFallback
+                                  src={foto.url}
+                                  alt={work.titulo}
+                                  className={`w-full object-cover rounded-lg border border-gray-100 ${isEditingWork ? 'h-44' : 'h-36'}`}
+                                />
+                              </div>
+
+                              {isEditingWork && draft ? (
+                                <div className="mt-3 space-y-3">
+                                  <div>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Descripción de la foto (opcional)</label>
+                                    <input
+                                      type="text"
+                                      value={draft.fotoDescripciones[fotoKey] ?? foto.descripcion ?? ''}
+                                      onChange={(e) => updateWorkDraftPhotoDescription(work.id, foto.id, e.target.value)}
+                                      placeholder="Describe brevemente esta foto"
+                                      maxLength={255}
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#685AA1]"
+                                    />
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    <input
+                                      ref={(el) => { replacePhotoInputRefs.current[fotoKey] = el; }}
+                                      type="file"
+                                      accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                                      onChange={(e) => handleReplacePhoto(work.id, foto, e)}
+                                      className="hidden"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => replacePhotoInputRefs.current[fotoKey]?.click()}
+                                      disabled={replacingPhotoId === foto.id}
+                                      className="inline-flex items-center gap-2 px-3 py-2 border border-[#685AA1] text-[#685AA1] rounded-lg hover:bg-[#F3F1FA] disabled:opacity-60 text-sm"
+                                    >
+                                      {replacingPhotoId === foto.id ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                                      {replacingPhotoId === foto.id ? 'Reemplazando...' : 'Reemplazar foto'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeletePhoto(work, foto.id)}
+                                      disabled={deletingPhotoId === foto.id || !canDelete}
+                                      title={canDelete ? 'Eliminar foto' : deleteMessage}
+                                      className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${canDelete ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-gray-200 text-gray-500 cursor-not-allowed'} disabled:opacity-60`}
+                                    >
+                                      {deletingPhotoId === foto.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                                      Eliminar
+                                    </button>
+                                  </div>
+                                  {!canDelete && (
+                                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">{deleteMessage}</p>
+                                  )}
+                                </div>
+                              ) : (
+                                foto.descripcion ? (
+                                  <p className="mt-2 text-sm text-gray-700">{foto.descripcion}</p>
+                                ) : null
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {isOwnProfile && isEditingWork && (
+                      <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <input
+                          ref={(el) => { addPhotosInputRefs.current[workKey] = el; }}
+                          type="file"
+                          accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                          multiple
+                          onChange={(e) => handleAddPhotosToWork(work.id, e)}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => addPhotosInputRefs.current[workKey]?.click()}
+                          disabled={addingPhotosWorkId === work.id}
+                          className="inline-flex items-center gap-2 px-4 py-2 border border-[#685AA1] text-[#685AA1] rounded-lg hover:bg-[#F3F1FA] disabled:opacity-60"
+                        >
+                          {addingPhotosWorkId === work.id ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+                          {addingPhotosWorkId === work.id ? 'Agregando...' : 'Agregar fotos'}
+                        </button>
+                        <span className="text-sm text-gray-600">Puedes agregar más fotos (sin límite). Si agregas nuevas, edita su descripción y pulsa “Guardar cambios”.</span>
                       </div>
                     )}
                   </div>
@@ -859,7 +1035,7 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
                   : 'bg-[#FFC900] text-[#1D1D1B] hover:bg-[#e6b500]'
               }`}
             >
-              {hasRequestSent ? 'Solicitud Enviada' : 'Enviar Solicitud'}
+              {hasRequestSent ? 'Solicitud enviada' : 'Enviar solicitud'}
             </button>
           </div>
         )}

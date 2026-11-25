@@ -232,22 +232,24 @@ export async function obtenerPortafolio(profesionalId) {
   return solicitarApi(`portafolio.php?profesional_id=${encodeURIComponent(profesionalId)}`);
 }
 
-export async function crearTrabajoPortafolio({ titulo, fotos }) {
+export async function crearTrabajoPortafolio({ titulo, fotos, descripciones = [] }) {
   const formData = new FormData();
   formData.append("action", "create_work");
   formData.append("titulo", titulo);
-  Array.from(fotos || []).forEach((foto) => {
+  Array.from(fotos || []).forEach((foto, index) => {
     formData.append("fotos[]", foto);
+    formData.append("descripciones[]", (descripciones[index] ?? ""));
   });
   return solicitarApiMultipart("portafolio.php", formData);
 }
 
-export async function agregarFotosPortafolio(trabajoId, fotos) {
+export async function agregarFotosPortafolio(trabajoId, fotos, descripciones = []) {
   const formData = new FormData();
   formData.append("action", "add_photos");
   formData.append("trabajo_id", String(trabajoId));
-  Array.from(fotos || []).forEach((foto) => {
+  Array.from(fotos || []).forEach((foto, index) => {
     formData.append("fotos[]", foto);
+    formData.append("descripciones[]", (descripciones[index] ?? ""));
   });
   return solicitarApiMultipart("portafolio.php", formData);
 }
@@ -266,6 +268,33 @@ export async function actualizarTituloPortafolio(trabajoId, titulo) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "update_title", trabajo_id: trabajoId, titulo }),
   });
+}
+
+export async function actualizarTrabajoPortafolio(trabajoId, { titulo, fotos = [] }) {
+  return solicitarApi("portafolio.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "update_work",
+      trabajo_id: trabajoId,
+      titulo,
+      fotos: fotos.map((foto) => ({
+        id: foto.id,
+        descripcion: foto.descripcion ?? "",
+      })),
+    }),
+  });
+}
+
+export async function reemplazarFotoPortafolio(fotoId, foto, descripcion) {
+  const formData = new FormData();
+  formData.append("action", "replace_photo");
+  formData.append("foto_id", String(fotoId));
+  formData.append("foto", foto);
+  if (descripcion !== undefined) {
+    formData.append("descripcion", descripcion ?? "");
+  }
+  return solicitarApiMultipart("portafolio.php", formData);
 }
 
 export async function eliminarTrabajoPortafolio(trabajoId) {
