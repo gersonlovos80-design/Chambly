@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Camera, MapPin, Star, X, Edit2, Save, CreditCard, Banknote, Plus, Trash2, ImagePlus, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Camera, MapPin, Star, X, Edit2, Save, CreditCard, Banknote, Plus, Trash2, ImagePlus, Loader2, RefreshCw, ChevronLeft, ChevronRight, LogIn } from 'lucide-react';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { RequestServiceModal, type ServiceRequestPayload } from './RequestServiceModal';
 import { ScheduleModal, WorkSchedule } from './ScheduleModal';
@@ -16,11 +16,13 @@ interface ProfessionalProfileProps {
   userData: any;
   onBack: () => void;
   isOwnProfile: boolean;
+  isLoggedIn?: boolean;
   clientData?: any;
   selectedCategory?: string;
   onViewReviews?: () => void;
   sentRequests?: any[];
   onSendRequest?: (payload: ServiceRequestPayload) => Promise<void>;
+  onRequireLogin?: () => void;
 }
 
 interface PortfolioPhoto {
@@ -96,7 +98,7 @@ function obtenerIdProfesionalPortafolio(userData: any): string {
   return id === null || id === undefined ? '' : String(id);
 }
 
-export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData, selectedCategory, onViewReviews, sentRequests = [], onSendRequest }: ProfessionalProfileProps) {
+export function ProfessionalProfile({ userData, onBack, isOwnProfile, isLoggedIn = isOwnProfile, clientData, selectedCategory, onViewReviews, sentRequests = [], onSendRequest, onRequireLogin }: ProfessionalProfileProps) {
   const [profilePhoto, setProfilePhoto] = useState<string>(userData.photo || '');
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -137,6 +139,8 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
   const [newWorkError, setNewWorkError] = useState('');
   const [editingWorkId, setEditingWorkId] = useState<string | number | null>(null);
   const [workEditDrafts, setWorkEditDrafts] = useState<Record<string, WorkEditDraft>>({});
+  const [carousel, setCarousel] = useState<{ workTitle: string; photos: PortfolioPhoto[]; index: number } | null>(null);
+  const carouselTouchStartX = useRef<number | null>(null);
   const newWorkInputRef = useRef<HTMLInputElement | null>(null);
   const addPhotosInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const replacePhotoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -163,6 +167,12 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
   }, [newWorkPhotos]);
 
   useEffect(() => {
+    if (!isLoggedIn) {
+      setPortfolioWorks([]);
+      setPortfolioLoadError('');
+      setLoadingPortfolio(false);
+      return;
+    }
     if (!portfolioOwnerId) {
       setPortfolioWorks([]);
       setPortfolioLoadError('');
@@ -186,13 +196,57 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
         if (!cancelled) setLoadingPortfolio(false);
       });
     return () => { cancelled = true; };
-  }, [portfolioOwnerId]);
+  }, [portfolioOwnerId, isLoggedIn]);
 
   const applyPortfolioResult = (result: any) => {
     if (Array.isArray(result?.trabajos)) {
       setPortfolioWorks(result.trabajos);
     }
   };
+
+  const openCarousel = (work: PortfolioWork, photoIndex: number) => {
+    const photos = work.fotos || [];
+    if (photos.length === 0) return;
+    setCarousel({
+      workTitle: work.titulo || 'Trabajo',
+      photos,
+      index: Math.max(0, Math.min(photoIndex, photos.length - 1))
+    });
+  };
+
+  const closeCarousel = () => setCarousel(null);
+
+  const showPrevCarouselPhoto = () => {
+    setCarousel((prev) => {
+      if (!prev || prev.photos.length === 0) return prev;
+      return { ...prev, index: (prev.index - 1 + prev.photos.length) % prev.photos.length };
+    });
+  };
+
+  const showNextCarouselPhoto = () => {
+    setCarousel((prev) => {
+      if (!prev || prev.photos.length === 0) return prev;
+      return { ...prev, index: (prev.index + 1) % prev.photos.length };
+    });
+  };
+
+  useEffect(() => {
+    if (!carousel) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeCarousel();
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        showPrevCarouselPhoto();
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        showNextCarouselPhoto();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [carousel]);
 
   const handlePhotoUpload = () => {
     alert('Función de carga de foto de perfil - En desarrollo');
@@ -830,7 +884,25 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
             </div>
           )}
 
-          {loadingPortfolio ? (
+          {!isLoggedIn ? (
+            <div className="text-center py-12">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[#F3F1FA] text-[#685AA1] mb-4">
+                <LogIn size={28} />
+              </div>
+              <p className="text-[#1D1D1B] font-medium mb-2">Inicia sesi?n para ver la galer?a</p>
+              <p className="text-sm text-gray-500 mb-5">Debes iniciar sesi?n para ver los trabajos publicados por este profesional.</p>
+              {onRequireLogin && (
+                <button
+                  type="button"
+                  onClick={onRequireLogin}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#685AA1] text-white font-medium rounded-lg hover:bg-[#584a89] transition-colors"
+                >
+                  <LogIn size={18} />
+                  Iniciar sesi?n
+                </button>
+              )}
+            </div>
+          ) : loadingPortfolio ? (
             <div className="flex items-center justify-center gap-2 py-10 text-gray-600">
               <Loader2 size={20} className="animate-spin" />
               <span>Cargando portafolio...</span>
@@ -841,9 +913,9 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
             </div>
           ) : portfolioWorks.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
-              <p>No hay trabajos en el portafolio.</p>
+              <p>A?n no tiene trabajos publicados</p>
               {isOwnProfile && (
-                <p className="text-sm mt-2">Agrega un trabajo con su título y al menos 3 fotos para que los clientes puedan verlo.</p>
+                <p className="text-sm mt-2">Agrega un trabajo con su t?tulo y al menos 3 fotos para que los clientes puedan verlo.</p>
               )}
             </div>
           ) : (
@@ -919,19 +991,25 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
                       <p className="text-gray-500 text-sm">Este trabajo no tiene fotos.</p>
                     ) : (
                       <div className={`grid gap-4 ${isEditingWork ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4'}`}>
-                        {(work.fotos || []).map((foto) => {
+                        {(work.fotos || []).map((foto, fotoIndex) => {
                           const fotoKey = String(foto.id);
                           const canDelete = fotoCount > MIN_FOTOS_TRABAJO;
-                          const deleteMessage = 'Debes tener más de 3 fotos si quieres eliminar esta foto. Sube otra foto o reemplázala.';
+                          const deleteMessage = 'Debes tener m?s de 3 fotos si quieres eliminar esta foto. Sube otra foto o reempl?zala.';
                           return (
                             <div key={fotoKey} className="border border-gray-200 rounded-lg p-3 bg-white">
-                              <div className="relative group">
+                              <button
+                                type="button"
+                                onClick={() => openCarousel(work, fotoIndex)}
+                                className="relative group w-full cursor-pointer"
+                                title="Ver foto en carrusel"
+                              >
                                 <ImageWithFallback
                                   src={foto.url}
                                   alt={work.titulo}
-                                  className={`w-full object-cover rounded-lg border border-gray-100 ${isEditingWork ? 'h-44' : 'h-36'}`}
+                                  className={`w-full object-cover rounded-lg border border-gray-100 transition-opacity group-hover:opacity-90 ${isEditingWork ? 'h-44' : 'h-36'}`}
                                 />
-                              </div>
+                                <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/10 transition-colors" />
+                              </button>
 
                               {isEditingWork && draft ? (
                                 <div className="mt-3 space-y-3">
@@ -1051,6 +1129,83 @@ export function ProfessionalProfile({ userData, onBack, isOwnProfile, clientData
           category={selectedCategory || userData.categories?.[0] || 'Servicio General'}
           onSendRequest={onSendRequest || (async () => { throw new Error('No se pudo conectar con el envío de solicitudes.'); })}
         />
+      )}
+
+      {carousel && carousel.photos.length > 0 && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={closeCarousel}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Carrusel de fotos del trabajo"
+        >
+          <div
+            className="relative w-full max-w-4xl"
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => { carouselTouchStartX.current = e.touches[0]?.clientX ?? null; }}
+            onTouchEnd={(e) => {
+              const startX = carouselTouchStartX.current;
+              const endX = e.changedTouches[0]?.clientX;
+              carouselTouchStartX.current = null;
+              if (startX == null || endX == null) return;
+              const delta = endX - startX;
+              if (Math.abs(delta) < 40) return;
+              if (delta > 0) showPrevCarouselPhoto();
+              else showNextCarouselPhoto();
+            }}
+          >
+            <button
+              type="button"
+              onClick={closeCarousel}
+              className="absolute -top-12 right-0 p-2 text-white hover:text-gray-200"
+              aria-label="Cerrar carrusel"
+              title="Cerrar"
+            >
+              <X size={28} />
+            </button>
+
+            <div className="bg-black rounded-xl overflow-hidden">
+              <div className="relative flex items-center justify-center min-h-[280px] max-h-[70vh]">
+                <ImageWithFallback
+                  src={carousel.photos[carousel.index]?.url}
+                  alt={`${carousel.workTitle} - foto ${carousel.index + 1}`}
+                  className="max-h-[70vh] w-full object-contain"
+                />
+
+                {carousel.photos.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={showPrevCarouselPhoto}
+                      className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+                      aria-label="Foto anterior"
+                      title="Foto anterior"
+                    >
+                      <ChevronLeft size={28} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={showNextCarouselPhoto}
+                      className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+                      aria-label="Foto siguiente"
+                      title="Foto siguiente"
+                    >
+                      <ChevronRight size={28} />
+                    </button>
+                  </>
+                )}
+              </div>
+
+              <div className="px-4 py-3 bg-[#1D1D1B] text-white">
+                <p className="font-medium">{carousel.workTitle}</p>
+                <div className="flex items-center justify-between gap-3 mt-1 text-sm text-gray-300">
+                  <p className="truncate">{carousel.photos[carousel.index]?.descripcion || 'Sin descripción'}</p>
+                  <span className="shrink-0">{carousel.index + 1} / {carousel.photos.length}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       <ScheduleModal

@@ -1261,6 +1261,8 @@ export default function App() {
           }}
           onBack={() => setCurrentScreen('browse-professionals')}
           isOwnProfile={false}
+          isLoggedIn={!!userData}
+          onRequireLogin={() => setCurrentScreen('login')}
           clientData={userType === 'client' ? userData : undefined}
           selectedCategory={selectedCategory}
           onViewReviews={handleViewReviews}
