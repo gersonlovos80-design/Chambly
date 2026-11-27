@@ -13,6 +13,8 @@ interface ProfessionalDashboardProps {
   onAcceptRequest?: (requestId: number, clientName: string, jobType: string, clientPhoto: string, scheduledDate: string, description: string, paymentMethod?: 'efectivo' | 'tarjeta') => void;
   onRejectRequest?: (requestId: number) => void;
   serviceRequests?: any[];
+  selectedRequestId?: number | null;
+  onCloseRequestDetail?: () => void;
   acceptedRequestIds?: number[];
   rejectedRequestIds?: number[];
   onShowTutorial?: () => void;
@@ -108,7 +110,7 @@ const allRequests = [
   }
 ];
 
-export function ProfessionalDashboard({ userName, userData, userCategories, onLogout, onNavigate, onViewClient, onAcceptRequest, onRejectRequest, serviceRequests = [], onShowTutorial, onToggleMode, roleHistory, notificationCount = 0 }: ProfessionalDashboardProps) {
+export function ProfessionalDashboard({ userName, userData, userCategories, onLogout, onNavigate, onViewClient, onAcceptRequest, onRejectRequest, serviceRequests = [], selectedRequestId, onCloseRequestDetail, onShowTutorial, onToggleMode, roleHistory, notificationCount = 0 }: ProfessionalDashboardProps) {
   const [selectedDepartamento, setSelectedDepartamento] = useState<string>('');
   const [selectedMunicipio, setSelectedMunicipio] = useState<string>('');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -163,6 +165,18 @@ export function ProfessionalDashboard({ userName, userData, userCategories, onLo
   const filteredRequests = [...departamentoFiltered].sort((a, b) => {
     return new Date(a.fecha_servicio || a.fecha_solicitud).getTime() - new Date(b.fecha_servicio || b.fecha_solicitud).getTime();
   });
+  const selectedRequest = serviceRequests.find((request) => Number(request.id) === selectedRequestId);
+  const selectedRequestDetails = selectedRequest ? {
+    ...selectedRequest,
+    id: Number(selectedRequest.id),
+    clientName: `${selectedRequest.cliente_nombre || ''} ${selectedRequest.cliente_apellido || ''}`.trim() || 'Cliente',
+    clientPhoto: selectedRequest.foto_cliente || '',
+    jobType: selectedRequest.categoria || 'Servicio',
+    budget: selectedRequest.presupuesto ? `$${selectedRequest.presupuesto}` : 'Presupuesto no indicado',
+    scheduledDateDisplay: [selectedRequest.fecha_servicio, selectedRequest.hora_servicio].filter(Boolean).join(' · ') || 'Fecha por coordinar',
+    description: selectedRequest.descripcion || selectedRequest.description || '',
+    paymentMethod: String(selectedRequest.metodo_pago || '').toLowerCase()
+  } : null;
   const municipalities = [...new Set(serviceRequests
     .filter(request => userCategories.includes(request.categoria))
     .filter(request => !selectedDepartamento || request.departamento === selectedDepartamento)
@@ -352,6 +366,99 @@ export function ProfessionalDashboard({ userName, userData, userCategories, onLo
           </div>
         )}
       </div>
+
+      {selectedRequestId !== undefined && selectedRequestId !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={onCloseRequestDetail}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Detalle de solicitud"
+        >
+          <div
+            className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-semibold text-[#1D1D1B]">Nueva solicitud</h2>
+                {selectedRequestDetails && <p className="mt-1 text-[#51437F]">{selectedRequestDetails.jobType}</p>}
+              </div>
+              <button
+                type="button"
+                onClick={onCloseRequestDetail}
+                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                aria-label="Cerrar detalle"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            {selectedRequestDetails ? (
+              <>
+                <dl className="space-y-4 text-sm">
+                  <div>
+                    <dt className="font-medium text-gray-500">Cliente</dt>
+                    <dd className="text-lg text-[#1D1D1B]">{selectedRequestDetails.clientName}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-medium text-gray-500">Descripción del servicio</dt>
+                    <dd className="whitespace-pre-wrap text-gray-800">{selectedRequestDetails.description || 'Sin descripción'}</dd>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <dt className="font-medium text-gray-500">Fecha</dt>
+                      <dd className="text-gray-800">{selectedRequestDetails.scheduledDateDisplay}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-medium text-gray-500">Lugar</dt>
+                      <dd className="text-gray-800">{[selectedRequestDetails.municipio, selectedRequestDetails.departamento].filter(Boolean).join(', ') || 'No especificado'}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-medium text-gray-500">Presupuesto</dt>
+                      <dd className="text-gray-800">{selectedRequestDetails.budget}</dd>
+                    </div>
+                    <div>
+                      <dt className="font-medium text-gray-500">Método de pago</dt>
+                      <dd className="capitalize text-gray-800">{selectedRequestDetails.paymentMethod || 'No especificado'}</dd>
+                    </div>
+                  </div>
+                </dl>
+                {selectedRequestDetails.estado === 'pendiente' ? (
+                  <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleAcceptRequest(selectedRequestDetails);
+                        onCloseRequestDetail?.();
+                      }}
+                      className="flex-1 rounded-lg bg-[#685AA1] px-5 py-3 font-medium text-white hover:bg-[#51437F]"
+                    >
+                      Aceptar solicitud
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleRejectRequest(selectedRequestDetails.id);
+                        onCloseRequestDetail?.();
+                      }}
+                      className="flex-1 rounded-lg border-2 border-gray-300 px-5 py-3 font-medium text-gray-700 hover:bg-gray-100"
+                    >
+                      Rechazar solicitud
+                    </button>
+                  </div>
+                ) : (
+                  <p className="mt-6 rounded-lg bg-gray-100 p-3 text-sm text-gray-700">
+                    Esta solicitud ya no está pendiente. Estado: {selectedRequestDetails.estado}.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-gray-600">No se encontró la solicitud. Puede que ya no esté disponible.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

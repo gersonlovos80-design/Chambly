@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
 import { ClientDashboard } from './components/ClientDashboard';
@@ -244,6 +244,12 @@ export default function App() {
   const [sentRequests, setSentRequests] = useState<any[]>([]);
   const [serviceRequests, setServiceRequests] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported';
+    return window.Notification.permission;
+  });
+  const seenNotificationIds = useRef<Set<number> | null>(null);
 
   const [transactions, setTransactions] = useState<any[]>([]);
   const [paymentHistoryError, setPaymentHistoryError] = useState('');
@@ -546,6 +552,7 @@ export default function App() {
   useEffect(() => {
     if (!userData || (userType !== 'client' && userType !== 'professional')) return;
     let cancelled = false;
+    seenNotificationIds.current = null;
     const loadServiceData = async (reportLoadError: boolean) => {
       const [requestState, conversationState, notificationState] = await Promise.allSettled([
           obtenerSolicitudes(),
@@ -588,6 +595,35 @@ export default function App() {
       }
 
       if (notificationItems) {
+        const currentNotificationIds = new Set<number>();
+        notificationItems.forEach((notification: any) => {
+          currentNotificationIds.add(Number(notification.id));
+        });
+        const previousNotificationIds = seenNotificationIds.current;
+        if (
+          previousNotificationIds &&
+          userType === 'professional' &&
+          browserNotificationPermission === 'granted' &&
+          'Notification' in window
+        ) {
+          notificationItems
+            .filter((notification: any) =>
+              notification.tipo === 'solicitud' &&
+              !previousNotificationIds.has(Number(notification.id))
+            )
+            .forEach((notification: any) => {
+              const browserNotification = new window.Notification(notification.titulo, {
+                body: notification.mensaje,
+                tag: `solicitud-${notification.referencia_id}`
+              });
+              browserNotification.onclick = () => {
+                window.focus();
+                void handleOpenRequestNotification(notification);
+                browserNotification.close();
+              };
+            });
+        }
+        seenNotificationIds.current = currentNotificationIds;
         setNotifications(notificationItems);
       } else {
         loadErrors.push(`notificaciones: ${String(notificationState.reason)}`);
@@ -638,7 +674,7 @@ export default function App() {
       cancelled = true;
       window.clearInterval(refreshTimer);
     };
-  }, [userData, userType]);
+  }, [userData, userType, browserNotificationPermission]);
 
   useEffect(() => {
     if (currentScreen !== 'payment-history' || !userData || (userType !== 'client' && userType !== 'professional')) return;
@@ -807,7 +843,7 @@ export default function App() {
     setCurrentScreen('request-details');
   };
 
-  const handleMarkNotificationRead = async (notificationId: number) => {
+  async function handleMarkNotificationRead(notificationId: number) {
     try {
       await marcarNotificacionLeida(notificationId);
       setNotifications(previous => previous.map(notification =>
@@ -816,6 +852,39 @@ export default function App() {
     } catch (error) {
       console.error('No se pudo marcar la notificación como leída:', error);
       triggerToast(error instanceof Error ? error.message : 'No se pudo actualizar la notificación');
+    }
+  }
+
+  async function handleOpenRequestNotification(notification: any) {
+    if (userType !== 'professional') return;
+    const requestId = Number(notification.referencia_id);
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+      triggerToast('No se pudo identificar la solicitud asociada a esta notificación.');
+      return;
+    }
+
+    await handleMarkNotificationRead(Number(notification.id));
+    setSelectedRequestId(requestId);
+    setCurrentScreen('professional-dashboard');
+  }
+
+  const handleEnableBrowserNotifications = async () => {
+    if (!('Notification' in window)) {
+      setBrowserNotificationPermission('unsupported');
+      triggerToast('Este navegador no admite notificaciones del sistema.');
+      return;
+    }
+    try {
+      const permission = await window.Notification.requestPermission();
+      setBrowserNotificationPermission(permission);
+      if (permission === 'granted') {
+        triggerToast('Notificaciones del navegador activadas.');
+      } else if (permission === 'denied') {
+        triggerToast('El navegador bloqueó las notificaciones. Puedes habilitarlas en la configuración del sitio.');
+      }
+    } catch (error) {
+      console.error('No se pudo solicitar permiso para notificaciones:', error);
+      triggerToast(error instanceof Error ? error.message : 'No se pudo activar las notificaciones del navegador.');
     }
   };
 
@@ -1191,6 +1260,8 @@ export default function App() {
           onAcceptRequest={handleAcceptRequest}
           onRejectRequest={handleRejectRequest}
           serviceRequests={serviceRequests}
+          selectedRequestId={selectedRequestId}
+          onCloseRequestDetail={() => setSelectedRequestId(null)}
           onShowTutorial={handleShowTutorial}
           onToggleMode={handleToggleMode}
           roleHistory={roleHistory}
@@ -1231,6 +1302,9 @@ export default function App() {
             }
           }}
           onOpenRequests={() => setCurrentScreen('professional-dashboard')}
+          onOpenRequest={handleOpenRequestNotification}
+          browserNotificationPermission={browserNotificationPermission}
+          onEnableBrowserNotifications={handleEnableBrowserNotifications}
           sentRequests={sentRequests}
           notifications={notifications}
           onMarkRead={handleMarkNotificationRead}

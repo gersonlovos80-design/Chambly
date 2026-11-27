@@ -7,10 +7,13 @@ interface ClientNotificationsProps {
   userType: 'client' | 'professional';
   onOpenChat?: (requestId: number) => void;
   onOpenRequests?: () => void;
+  onOpenRequest?: (notification: any) => void;
   onViewProfessional?: (professional: any) => void;
   sentRequests?: any[];
   notifications?: any[];
   onMarkRead?: (notificationId: number) => void;
+  browserNotificationPermission?: NotificationPermission | 'unsupported';
+  onEnableBrowserNotifications?: () => void;
   onReviewRequest?: (requestId: number, rating: number, comment: string) => Promise<void>;
 }
 
@@ -115,7 +118,7 @@ const mockNotifications = [
   }
 ];
 
-export function ClientNotifications({ onBack, userType, onOpenChat, onOpenRequests, sentRequests = [], notifications = [], onMarkRead, onReviewRequest }: ClientNotificationsProps) {
+export function ClientNotifications({ onBack, userType, onOpenChat, onOpenRequests, onOpenRequest, sentRequests = [], notifications = [], onMarkRead, browserNotificationPermission, onEnableBrowserNotifications, onReviewRequest }: ClientNotificationsProps) {
   const [reviewRequest, setReviewRequest] = useState<any>(null);
   const [reviewError, setReviewError] = useState('');
   return (
@@ -135,6 +138,24 @@ export function ClientNotifications({ onBack, userType, onOpenChat, onOpenReques
 
       <div className="max-w-4xl mx-auto px-4 py-8 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         <h1 className="text-3xl mb-6 text-[#1D1D1B]">Notificaciones</h1>
+        {userType === 'professional' && onEnableBrowserNotifications && browserNotificationPermission !== 'unsupported' && (
+          <div className="mb-6 rounded-xl border border-[#D3CFED] bg-white p-4">
+            {browserNotificationPermission === 'granted' ? (
+              <p className="text-sm text-green-700">Las notificaciones del navegador están activadas.</p>
+            ) : browserNotificationPermission === 'denied' ? (
+              <p className="text-sm text-amber-700">El navegador las bloqueó. Habilítalas desde la configuración de permisos de este sitio.</p>
+            ) : (
+              <button
+                type="button"
+                onClick={onEnableBrowserNotifications}
+                className="rounded-lg bg-[#685AA1] px-4 py-2 text-white transition-colors hover:bg-[#51437F]"
+              >
+                Activar notificaciones del navegador
+              </button>
+            )}
+            <p className="mt-2 text-xs text-gray-500">Se mostrarán mientras Chambly esté abierto en este navegador.</p>
+          </div>
+        )}
 
         {/* Sent Requests Section */}
         {userType === 'client' && sentRequests.length > 0 && (
@@ -238,10 +259,10 @@ export function ClientNotifications({ onBack, userType, onOpenChat, onOpenReques
                       {userType === 'professional' && notification.tipo === 'solicitud' && (
                         <div className="mt-3">
                           <button
-                            onClick={onOpenRequests}
+                            onClick={() => onOpenRequest ? onOpenRequest(notification) : onOpenRequests?.()}
                             className="rounded-lg bg-[#685AA1] px-4 py-2 text-white transition-colors hover:bg-[#51437F]"
                           >
-                            Ver solicitudes de servicio
+                            Ver solicitud
                           </button>
                         </div>
                       )}
